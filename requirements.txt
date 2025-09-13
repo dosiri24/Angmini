@@ -10,7 +10,7 @@ requests>=2.31.0
 aiohttp>=3.8.5
 
 # Database
-sqlite3>=0.4.6
+# sqlite3 is a built-in module in Python
 
 # Data Validation
 pydantic>=2.4.2

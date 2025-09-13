@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ Phase 1: 기본 구조 구축 (1-2주)
+## ✅ Phase 1: 기본 구조 구축 (1-2주) - **완료**
 
 - [x] **1.1: 프로젝트 초기 설정**
     - [x] ~~1.1.1: `poetry init`을 사용하여 `pyproject.toml` 생성 및 기본 정보 설정~~ => `requirements.txt` 사용으로 변경
@@ -14,24 +14,31 @@
     - [x] 1.1.5: `requirements.txt` 파일 생성
     - [x] 1.1.6: 폴더 구조 생성 (`ai`, `mcp`, `tests`, `data`, `docs`로 단순화)
 
-- [ ] **1.2: Core 모듈 개발**
-    - [ ] 1.2.1: `ai/core/config.py`: 환경변수를 로드하고 관리하는 `Config` 클래스 구현
-    - [ ] 1.2.2: `ai/core/logger.py`: 프로젝트 전반에서 사용할 `Logger` 설정 구현
-    - [ ] 1.2.3: `ai/core/exceptions.py`: 커스텀 예외 클래스 정의 (`ToolError`, `EngineError` 등)
-    - [ ] 1.2.4: `main.py`: 기본 진입점 파일 생성 및 `Config`, `Logger` 초기화 코드 작성
+- [x] **1.2: Core 모듈 개발**
+    - [x] 1.2.1: `ai/core/config.py`: 환경변수를 로드하고 관리하는 `Config` 클래스 구현 (+ `DEFAULT_INTERFACE` 설정 추가)
+    - [x] 1.2.2: `ai/core/logger.py`: 프로젝트 전반에서 사용할 `Logger` 설정 구현
+    - [x] 1.2.3: `ai/core/exceptions.py`: 커스텀 예외 클래스 정의 (`ToolError`, `EngineError` 등)
+    - [x] 1.2.4: `main.py`: 기본 진입점 파일 생성 및 `Config`, `Logger` 초기화 코드 작성 (환경변수 기반 인터페이스 선택 기능 추가)
 
-- [ ] **1.3: 기본 인터페이스 구축**
-    - [ ] 1.3.1: `interface/cli.py`: 간단한 상호작용이 가능한 CLI 인터페이스 초안 구현
-    - [ ] 1.3.2: `interface/discord_bot.py`: Discord 봇 기본 연결 및 메시지 수신/발신 기능 구현 (기본 `on_message` 이벤트)
+- [x] **1.3: 기본 인터페이스 구축**
+    - [x] 1.3.1: `interface/cli.py`: 간단한 상호작용이 가능한 CLI 인터페이스 초안 구현
+    - [x] 1.3.2: `interface/discord_bot.py`: Discord 봇 기본 연결 및 메시지 수신/발신 기능 구현 (기본 `on_message` 이벤트)
+
+### 📝 **Phase 1에서 적용된 사용자 피드백 및 수정사항**
+- ✅ **아키텍처 개선**: `core` 폴더를 `ai/core`로 이동하여 구조 명확화
+- ✅ **인터페이스 배치**: Discord 봇을 `ai` 폴더가 아닌 `interface` 폴더에 배치하여 역할 분리
+- ✅ **환경변수 기반 시스템**: 매번 메뉴 선택 대신 `DEFAULT_INTERFACE` 환경변수로 기본 인터페이스 설정
+- ✅ **타입 안전성**: Discord 봇 코드의 타입 체크 오류 수정
+- ✅ **코드 품질**: `main.py` 함수 중복 및 구조적 문제 해결
 
 ---
 
 ## 🟡 Phase 2: ReAct Engine 구현 (3-4주) - *핵심*
 
 - [ ] **2.1: LLM 및 기본 데이터 구조**
-    - [ ] 2.1.1: `ai/llm_provider.py`: Google Gemini API와 연동하는 `LLMProvider` 클래스 구현
-    - [ ] 2.1.2: `mcp/base_tool.py`: 모든 도구의 기반이 될 `BaseTool` 추상 클래스와 `ToolResult` 데이터 클래스 정의
-    - [ ] 2.1.3: `mcp/tool_registry.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolRegistry` 클래스 구현
+    - [ ] 2.1.1: `ai/ai_brain.py`: Google Gemini API와 연동하는 `AIBrain` 클래스 구현 (구 `LLMProvider`)
+    - [ ] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
+    - [ ] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
 
 - [ ] **2.2: ReAct 엔진 핵심 로직**
     - [ ] 2.2.1: `ai/react_engine/agent_scratchpad.py`: `AgentScratchpad` 클래스 구현 (Thought, Action, Observation 기록)
@@ -44,7 +51,7 @@
 
 - [ ] **2.4: 첫 번째 도구 및 통합**
     - [ ] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
-    - [ ] 2.4.2: `ToolRegistry`에 `FileTool` 등록
+    - [ ] 2.4.2: `ToolManager`에 `FileTool` 등록 (구 `ToolRegistry`)
     - [ ] 2.4.3: `ReactExecutor`가 `FileTool`을 호출하고 `Observation`을 받는 과정 통합 테스트
 
 ---
@@ -55,17 +62,17 @@
     - [ ] 3.1.1: `mcp/tools/notion_tool.py`: `NotionTool` 클래스 구현
     - [ ] 3.1.2: Notion API 클라이언트 초기화 및 인증
     - [ ] 3.1.3: 일정 추가/조회, 할일 추가/조회 기능 구현
-    - [ ] 3.1.4: `ToolRegistry`에 `NotionTool` 등록
+    - [ ] 3.1.4: `ToolManager`에 `NotionTool` 등록 (구 `ToolRegistry`)
 
 - [ ] **3.2: 웹 도구 구현**
     - [ ] 3.2.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
     - [ ] 3.2.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
-    - [ ] 3.2.3: `ToolRegistry`에 `WebTool` 등록
+    - [ ] 3.2.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
 
 - [ ] **3.3: Apple 시스템 도구 구현 (선택적)**
     - [ ] 3.3.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현
     - [ ] 3.3.2: AppleScript 또는 `py-applescript`를 이용한 시스템 제어 기능 연구 및 구현 (예: 알림 보내기)
-    - [ ] 3.3.3: `ToolRegistry`에 `AppleTool` 등록
+    - [ ] 3.3.3: `ToolManager`에 `AppleTool` 등록 (구 `ToolRegistry`)
 
 ---
 
@@ -96,9 +103,10 @@
     - [ ] 5.1.3: `pytest-mock`을 사용하여 외부 API 호출 모킹
 
 - [ ] **5.2: 문서화**
-    - [ ] 5.2.1: `docs/API.md`: 각 도구의 사용법과 API 명세 작성
-    - [ ] 5.2.2: `docs/SETUP.md`: 프로젝트 설치 및 설정 가이드 작성
-    - [ ] 5.2.3: `docs/USAGE.md`: 사용법 및 예시 명령어 작성
+    - [x] 5.2.1: `docs/PLAN_for_Users.md`: 사용자를 위한 쉬운 버전의 개발 계획서 작성 (Phase 1에서 조기 완성)
+    - [ ] 5.2.2: `docs/API.md`: 각 도구의 사용법과 API 명세 작성
+    - [ ] 5.2.3: `docs/SETUP.md`: 프로젝트 설치 및 설정 가이드 작성
+    - [ ] 5.2.4: `docs/USAGE.md`: 사용법 및 예시 명령어 작성
 
 - [ ] **5.3: 배포 준비**
     - [ ] 5.3.1: `Dockerfile` 작성 (선택적)
