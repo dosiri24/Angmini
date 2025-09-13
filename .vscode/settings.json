@@ -1,0 +1,5 @@
+{
+    "github.copilot.advanced": {
+        "debug.useNodeFetcher": true
+    }
+}

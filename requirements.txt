@@ -1,0 +1,25 @@
+# Discord Bot
+discord.py>=2.3.2
+
+# Google AI
+google-generativeai>=0.3.2
+
+# Utils
+python-dotenv>=1.0.0
+requests>=2.31.0
+aiohttp>=3.8.5
+
+# Database
+sqlite3>=0.4.6
+
+# Data Validation
+pydantic>=2.4.2
+
+# For Notion integration (when needed)
+# notion-client>=2.2.1
+
+# For vector database (when needed)
+# chromadb>=0.4.15
+
+# For token counting (when needed)
+# tiktoken>=0.5.1
