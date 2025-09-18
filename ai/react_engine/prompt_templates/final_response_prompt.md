@@ -13,6 +13,8 @@
 {{fail_log}}
 - 내부 메모:
 {{notes}}
+- 최근 대화 기록:
+{{conversation_history}}
 - 최신 실행 결과:
 {{latest_data}}
 

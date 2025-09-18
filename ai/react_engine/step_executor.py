@@ -10,6 +10,7 @@ from ai.core.exceptions import EngineError, ToolError
 from ai.core.logger import get_logger
 from mcp.tool_manager import ToolManager
 
+from .conversation_memory import ConversationMemory
 from .models import ExecutionContext, PlanStep, StepCompletedEvent, StepOutcome, StepResult
 
 
@@ -22,11 +23,13 @@ class StepExecutor:
         brain: AIBrain | None = None,
         *,
         dialogue_template: str | None = None,
+        conversation_memory: ConversationMemory | None = None,
     ) -> None:
         self._tool_manager = tool_manager
         self._brain = brain
         self._logger = get_logger(self.__class__.__name__)
         self._dialogue_template = dialogue_template or self._load_default_template()
+        self._conversation_memory = conversation_memory
 
     def execute(self, step: PlanStep, context: ExecutionContext, attempt: int) -> StepResult:
         if not step.tool_name:
@@ -72,7 +75,19 @@ class StepExecutor:
                 attempt=attempt,
             )
 
-        prompt = self._build_dialogue_prompt(step.description, context, latest_data="(없음)")
+        latest_data = self._latest_observation_text(context)
+        memory_text = (
+            self._conversation_memory.formatted(limit=10)
+            if self._conversation_memory
+            else "(최근 대화 기록 없음)"
+        )
+        self._logger.debug("Dialogue step memory snapshot:\n%s", memory_text)
+        prompt = self._build_dialogue_prompt(
+            step.description,
+            context,
+            latest_data=latest_data,
+            memory=memory_text,
+        )
         self._logger.debug("Generating direct response for step %s", step.id)
         try:
             message = self._brain.generate_text(prompt, temperature=0.6)
@@ -102,6 +117,7 @@ class StepExecutor:
         context: ExecutionContext,
         *,
         latest_data: str,
+        memory: str,
     ) -> str:
         plan = context.as_plan_checklist() or "(plan unavailable)"
         notes = "\n".join(context.scratchpad[-5:]) if context.scratchpad else "(없음)"
@@ -114,6 +130,7 @@ class StepExecutor:
             .replace("{{fail_log}}", fail_log)
             .replace("{{notes}}", notes)
             .replace("{{latest_data}}", latest_data or "(없음)")
+            .replace("{{conversation_history}}", memory or "(최근 대화 기록 없음)")
         )
         return prompt
 
@@ -131,6 +148,7 @@ class StepExecutor:
             "현재 계획 체크리스트:\n{{plan_checklist}}\n\n"
             "최근 실패 로그:\n{{fail_log}}\n\n"
             "추가 메모:\n{{notes}}\n\n"
+            "최근 대화 기록:\n{{conversation_history}}\n\n"
             "최근 관찰 데이터:\n{{latest_data}}"
         )
 
@@ -140,10 +158,17 @@ class StepExecutor:
 
         last_event = self._latest_event(context)
         latest_data, step_description = self._summarise_event(last_event, context)
+        memory_text = (
+            self._conversation_memory.formatted(limit=10)
+            if self._conversation_memory
+            else "(최근 대화 기록 없음)"
+        )
+        self._logger.debug("Final response memory snapshot:\n%s", memory_text)
         prompt = self._build_dialogue_prompt(
             step_description,
             context,
             latest_data=latest_data,
+            memory=memory_text,
         )
         self._logger.debug("Generating final response summary")
         try:
@@ -157,6 +182,28 @@ class StepExecutor:
             if isinstance(event, StepCompletedEvent):
                 return event
         return None
+
+    def _latest_observation_text(self, context: ExecutionContext) -> str:
+        event = self._latest_event(context)
+        if event is None:
+            return "(없음)"
+
+        description = None
+        for step in context.plan_steps:
+            if step.id == event.step_id:
+                description = step.description
+                break
+
+        data_text = "(데이터 없음)"
+        if event.data is not None:
+            try:
+                data_text = json.dumps(event.data, ensure_ascii=False, indent=2)
+            except TypeError:
+                data_text = str(event.data)
+
+        if description:
+            return f"최근 완료된 단계: #{event.step_id} {description}\n{data_text}"
+        return data_text
 
     def _summarise_event(
         self,
