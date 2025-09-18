@@ -4,7 +4,7 @@
 
 ---
 
-## ✅ Phase 1: 기본 구조 구축 (1-2주) - **완료**
+## ⬜ Phase 1: 기본 구조 구축 (1-2주) - **미완료**
 
 - [x] **1.1: 프로젝트 초기 설정**
     - [x] ~~1.1.1: `poetry init`을 사용하여 `pyproject.toml` 생성 및 기본 정보 설정~~ => `requirements.txt` 사용으로 변경
@@ -25,25 +25,27 @@
     - [x] 1.3.2: `interface/discord_bot.py`: Discord 봇 기본 연결 및 메시지 수신/발신 기능 구현 (기본 `on_message` 이벤트)
 
 ### 📝 **Phase 1에서 적용된 사용자 피드백 및 수정사항**
-- ✅ **아키텍처 개선**: `core` 폴더를 `ai/core`로 이동하여 구조 명확화
-- ✅ **인터페이스 배치**: Discord 봇을 `ai` 폴더가 아닌 `interface` 폴더에 배치하여 역할 분리
-- ✅ **환경변수 기반 시스템**: 매번 메뉴 선택 대신 `DEFAULT_INTERFACE` 환경변수로 기본 인터페이스 설정
-- ✅ **타입 안전성**: Discord 봇 코드의 타입 체크 오류 수정
-- ✅ **코드 품질**: `main.py` 함수 중복 및 구조적 문제 해결
+- [ ] **아키텍처 개선**: `core` 폴더를 `ai/core`로 이동하여 구조 명확화
+- [x] **인터페이스 배치**: Discord 봇을 `ai` 폴더가 아닌 `interface` 폴더에 배치하여 역할 분리
+- [x] **환경변수 기반 시스템**: 매번 메뉴 선택 대신 `DEFAULT_INTERFACE` 환경변수로 기본 인터페이스 설정
+- [x] **타입 안전성**: Discord 봇 코드의 타입 체크 오류 수정
+- [x] **코드 품질**: `main.py` 함수 중복 및 구조적 문제 해결
+- [x] **Discord 구성 간소화**: Guild ID 없이 봇 토큰만으로 실행할 수 있도록 조정
+- [x] **Gemini 모델 설정**: 환경변수 `GEMINI_MODEL`로 사용할 모델을 지정
 
 ---
 
 ## 🟡 Phase 2: ReAct Engine 구현 (3-4주) - *핵심*
 
-- [x] **2.1: LLM 및 기본 데이터 구조**
-    - [x] 2.1.1: `ai/ai_brain.py`: Google Gemini API와 연동하는 `AIBrain` 클래스 구현 (구 `LLMProvider`)
-    - [x] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
-    - [x] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
+- [ ] **2.1: LLM 및 기본 데이터 구조**
+    - [ ] 2.1.1: `ai/ai_brain.py`: Google Gemini API와 연동하는 `AIBrain` 클래스 구현 (구 `LLMProvider`)
+    - [ ] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
+    - [ ] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
 
-- [x] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
-    - [x] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
-    - [x] 2.2.2: `ai/react_engine/step_executor.py`: StepExecutor 구현 (도구 실행 및 결과 검증)
-    - [x] 2.2.3: `ai/react_engine/safety_guard.py`: SafetyGuard 구현 (기본 단계/재시도 제한)
+- [ ] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
+    - [ ] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
+    - [ ] 2.2.2: `ai/react_engine/step_executor.py`: StepExecutor 구현 (도구 실행 및 결과 검증)
+    - [ ] 2.2.3: `ai/react_engine/safety_guard.py`: SafetyGuard 구현 (기본 단계/재시도 제한)
     - [ ] 2.2.4: `ai/react_engine/prompt_templates/`: `system_prompt.md`, `react_prompt.md` 등 프롬프트 템플릿 파일 생성
     - [ ] 2.2.5: `ai/react_engine/agent_scratchpad.py`: 확장된 사고/관찰 기록 모듈 (React Engine Stage 2로 이관)
 
@@ -52,8 +54,8 @@
     - [ ] 2.3.2: `ai/react_engine/planning_engine.py`: `PlanningEngine` 클래스 기본 골격 구현 (복잡도 평가 로직 우선)
 
 - [ ] **2.4: 첫 번째 도구 및 통합**
-    - [x] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
-    - [x] 2.4.2: `ToolManager`에 `FileTool` 등록 (CLI/Discord 인터페이스 초기화 시 등록 완료)
+    - [ ] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
+    - [ ] 2.4.2: `ToolManager`에 `FileTool` 등록 (CLI/Discord 인터페이스 초기화 시 등록 완료)
     - [ ] 2.4.3: React Engine이 `FileTool`을 호출하고 Observation을 기록하는 통합 테스트 (LLM 환경 준비 후 진행)
 
 ### 🛠️ 최근 업데이트 (2025-09-18)
@@ -109,7 +111,7 @@
     - [ ] 5.1.3: `pytest-mock`을 사용하여 외부 API 호출 모킹
 
 - [ ] **5.2: 문서화**
-    - [x] 5.2.1: `docs/PLAN_for_Users.md`: 사용자를 위한 쉬운 버전의 개발 계획서 작성 (Phase 1에서 조기 완성)
+    - [ ] 5.2.1: `docs/PLAN_for_Users.md`: 사용자를 위한 쉬운 버전의 개발 계획서 작성 (Phase 1에서 조기 완성)
     - [ ] 5.2.2: `docs/API.md`: 각 도구의 사용법과 API 명세 작성
     - [ ] 5.2.3: `docs/SETUP.md`: 프로젝트 설치 및 설정 가이드 작성
     - [ ] 5.2.4: `docs/USAGE.md`: 사용법 및 예시 명령어 작성
