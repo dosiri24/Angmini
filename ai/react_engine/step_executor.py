@@ -2,30 +2,35 @@
 
 from __future__ import annotations
 
-from ai.core.exceptions import ToolError
+import json
+from pathlib import Path
+
+from ai.ai_brain import AIBrain
+from ai.core.exceptions import EngineError, ToolError
 from ai.core.logger import get_logger
 from mcp.tool_manager import ToolManager
 
-from .models import ExecutionContext, PlanStep, StepOutcome, StepResult
+from .models import ExecutionContext, PlanStep, StepCompletedEvent, StepOutcome, StepResult
 
 
 class StepExecutor:
     """Handles execution of a single `PlanStep`."""
 
-    def __init__(self, tool_manager: ToolManager) -> None:
+    def __init__(
+        self,
+        tool_manager: ToolManager,
+        brain: AIBrain | None = None,
+        *,
+        dialogue_template: str | None = None,
+    ) -> None:
         self._tool_manager = tool_manager
+        self._brain = brain
         self._logger = get_logger(self.__class__.__name__)
+        self._dialogue_template = dialogue_template or self._load_default_template()
 
     def execute(self, step: PlanStep, context: ExecutionContext, attempt: int) -> StepResult:
         if not step.tool_name:
-            error = "Plan step에 사용할 도구가 지정되지 않았습니다."
-            self._logger.error(error)
-            return StepResult(
-                step_id=step.id,
-                outcome=StepOutcome.FAILED,
-                error_reason=error,
-                attempt=attempt,
-            )
+            return self._handle_dialogue_step(step, context, attempt)
 
         try:
             tool_result = self._tool_manager.execute(step.tool_name, **step.parameters)
@@ -46,3 +51,132 @@ class StepExecutor:
                 error_reason=message,
                 attempt=attempt,
             )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _handle_dialogue_step(
+        self,
+        step: PlanStep,
+        context: ExecutionContext,
+        attempt: int,
+    ) -> StepResult:
+        if self._brain is None:
+            error = "Plan step에 사용할 도구가 지정되지 않았습니다."
+            self._logger.error("%s (no fallback brain available)", error)
+            return StepResult(
+                step_id=step.id,
+                outcome=StepOutcome.FAILED,
+                error_reason=error,
+                attempt=attempt,
+            )
+
+        prompt = self._build_dialogue_prompt(step.description, context, latest_data="(없음)")
+        self._logger.debug("Generating direct response for step %s", step.id)
+        try:
+            message = self._brain.generate_text(prompt, temperature=0.6)
+        except EngineError as exc:
+            self._logger.warning("대화 응답 생성 실패: %s", exc)
+            return StepResult(
+                step_id=step.id,
+                outcome=StepOutcome.RETRY,
+                error_reason=str(exc),
+                attempt=attempt,
+            )
+
+        self._logger.info("Step %s 대화 응답 완료", step.id)
+        return StepResult(
+            step_id=step.id,
+            outcome=StepOutcome.SUCCESS,
+            data={
+                "type": "direct_response",
+                "message": message,
+            },
+            attempt=attempt,
+        )
+
+    def _build_dialogue_prompt(
+        self,
+        step_description: str,
+        context: ExecutionContext,
+        *,
+        latest_data: str,
+    ) -> str:
+        plan = context.as_plan_checklist() or "(plan unavailable)"
+        notes = "\n".join(context.scratchpad[-5:]) if context.scratchpad else "(없음)"
+        fail_log = context.fail_log_summary()
+        prompt = (
+            self._dialogue_template
+            .replace("{{goal}}", context.goal)
+            .replace("{{step_description}}", step_description)
+            .replace("{{plan_checklist}}", plan)
+            .replace("{{fail_log}}", fail_log)
+            .replace("{{notes}}", notes)
+            .replace("{{latest_data}}", latest_data or "(없음)")
+        )
+        return prompt
+
+    def _load_default_template(self) -> str:
+        template_path = Path(__file__).resolve().parent / "prompt_templates" / "final_response_prompt.md"
+        if template_path.exists():
+            return template_path.read_text(encoding="utf-8").strip()
+
+        # Fallback template
+        return (
+            "당신은 사용자의 목표를 도와주는 친절한 비서입니다.\n"
+            "사용자에게 자연스럽고 짧게 응답하세요.\n\n"
+            "사용자 목표: {{goal}}\n"
+            "현재 단계 설명: {{step_description}}\n"
+            "현재 계획 체크리스트:\n{{plan_checklist}}\n\n"
+            "최근 실패 로그:\n{{fail_log}}\n\n"
+            "추가 메모:\n{{notes}}\n\n"
+            "최근 관찰 데이터:\n{{latest_data}}"
+        )
+
+    def compose_final_message(self, context: ExecutionContext) -> str | None:
+        if self._brain is None:
+            return None
+
+        last_event = self._latest_event(context)
+        latest_data, step_description = self._summarise_event(last_event, context)
+        prompt = self._build_dialogue_prompt(
+            step_description,
+            context,
+            latest_data=latest_data,
+        )
+        self._logger.debug("Generating final response summary")
+        try:
+            return self._brain.generate_text(prompt, temperature=0.6)
+        except EngineError as exc:
+            self._logger.warning("최종 응답 생성 실패: %s", exc)
+            return None
+
+    def _latest_event(self, context: ExecutionContext) -> StepCompletedEvent | None:
+        for event in reversed(context.events):
+            if isinstance(event, StepCompletedEvent):
+                return event
+        return None
+
+    def _summarise_event(
+        self,
+        event: StepCompletedEvent | None,
+        context: ExecutionContext,
+    ) -> tuple[str, str]:
+        if event is None:
+            return "(최근 수행 데이터가 없습니다)", "마지막 단계 정보를 찾을 수 없습니다"
+
+        data_text = "(데이터 없음)"
+        if event.data is not None:
+            try:
+                data_text = json.dumps(event.data, ensure_ascii=False, indent=2)
+            except TypeError:
+                data_text = str(event.data)
+
+        description = "최근 완료된 단계"
+        for step in context.plan_steps:
+            if step.id == event.step_id:
+                description = step.description
+                break
+
+        return data_text, description

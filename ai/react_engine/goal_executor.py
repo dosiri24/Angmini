@@ -79,6 +79,12 @@ class GoalExecutor:
             result = self._step_executor.execute(step, context, attempt)
             self._handle_step_result(context, step, result)
 
+        final_message = self._extract_direct_message(context)
+        if not final_message:
+            final_message = self._step_executor.compose_final_message(context)
+        if final_message:
+            context.metadata["final_message"] = final_message
+
         return context
 
     # ------------------------------------------------------------------
@@ -88,7 +94,9 @@ class GoalExecutor:
     def _update_plan(self, context: ExecutionContext, reason: Optional[str] = None) -> None:
         available_tools = self._tool_manager.list()
         prompt = self._build_plan_prompt(context.goal, available_tools, context, reason)
+        self._logger.debug("Plan prompt generated:\n%s", prompt)
         response = self._brain.generate_text(prompt)
+        self._logger.debug("Plan response raw: %s", response)
         steps = self._parse_plan_response(response)
         if not steps:
             raise EngineError("LLM이 빈 계획을 반환했습니다.")
@@ -127,9 +135,26 @@ class GoalExecutor:
         )
 
     def _parse_plan_response(self, response: str) -> List[PlanStep]:
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if lines:
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
+
+        first_bracket_candidates = [idx for idx in (cleaned.find("["), cleaned.find("{")) if idx != -1]
+        if first_bracket_candidates:
+            first_bracket = min(first_bracket_candidates)
+            if first_bracket > 0:
+                cleaned = cleaned[first_bracket:]
+
         try:
-            data = json.loads(response)
+            data = json.loads(cleaned)
         except json.JSONDecodeError as exc:
+            self._logger.error("계획 응답 파싱 실패", extra={"response": response, "cleaned": cleaned})
             raise EngineError("계획 응답이 JSON 형식을 따르지 않습니다.") from exc
 
         if not isinstance(data, list):
@@ -215,6 +240,16 @@ class GoalExecutor:
         raise EngineError(
             decision.reason or f"Step {step.id}에서 복구 불가능한 오류가 발생했습니다."
         )
+
+    def _extract_direct_message(self, context: ExecutionContext) -> str | None:
+        for event in reversed(context.events):
+            if isinstance(event, StepCompletedEvent):
+                data = getattr(event, "data", None)
+                if isinstance(data, dict) and data.get("type") == "direct_response":
+                    message = data.get("message")
+                    if isinstance(message, str) and message.strip():
+                        return message.strip()
+        return None
 
     # Future: integrate thinking loop with react prompt
     def render_react_prompt(self, context: ExecutionContext) -> str:

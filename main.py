@@ -8,7 +8,7 @@ from types import ModuleType
 from typing import Callable, Mapping, cast
 
 from ai.core.config import Config
-from ai.core.exceptions import ConfigError, InterfaceError
+from ai.core.exceptions import ConfigError, EngineError, InterfaceError
 from ai.core.logger import get_logger, setup_logging
 
 InterfaceHandler = Callable[[Config], None]
@@ -30,6 +30,13 @@ def main() -> None:
     setup_logging(config.log_level)
     logger = get_logger(__name__)
     logger.info("Launching Personal AI Assistant (interface=%s)", config.default_interface)
+    logger.debug(
+        "Configuration loaded (model=%s, gemini_key_present=%s, discord_token_present=%s)",
+        config.gemini_model,
+        bool(config.gemini_api_key),
+        bool(config.discord_bot_token),
+    )
+    logger.debug("Configuration env path: %s", config.env_path or "<auto>")
 
     try:
         interface_handler = _resolve_interface(config.default_interface)
@@ -37,7 +44,16 @@ def main() -> None:
         logger.error("%s", exc)
         raise SystemExit(1) from exc
 
-    interface_handler(config)
+    try:
+        interface_handler(config)
+    except InterfaceError as exc:
+        logger.error("Interface error: %s", exc)
+        print(f"Interface error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except EngineError as exc:
+        logger.error("Engine error: %s", exc)
+        print(f"Engine error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 def _resolve_interface(interface_name: str) -> InterfaceHandler:

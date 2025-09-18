@@ -39,6 +39,12 @@ class AIBrain:
         self._logger = get_logger(self.__class__.__name__)
         self._model_name = config.gemini_model
         self._configure_client(config.gemini_api_key)
+        masked_key = self._mask_key(config.gemini_api_key)
+        self._logger.debug(
+            "Gemini client configured (model=%s, api_key=%s)",
+            self._model_name,
+            masked_key,
+        )
         self._model = genai.GenerativeModel(self._model_name)
 
     def generate_text(
@@ -60,10 +66,20 @@ class AIBrain:
                 },
             )
         except Exception as exc:  # pragma: no cover - API errors surface at runtime
-            raise EngineError("Gemini API 요청이 실패했습니다.") from exc
+            self._logger.error("Gemini API 요청 실패: %s", exc, exc_info=True)
+            raise EngineError(f"Gemini API 요청이 실패했습니다: {exc}") from exc
 
         text = self._pick_primary_text(response)
         if not text:
+            feedback = getattr(response, "prompt_feedback", None)
+            safety = getattr(feedback, "safety_ratings", None) if feedback else None
+            self._logger.warning(
+                "Gemini 응답이 비어 있습니다.",
+                extra={
+                    "prompt_feedback": str(feedback) if feedback else None,
+                    "safety_ratings": str(safety) if safety else None,
+                },
+            )
             raise EngineError("Gemini API가 비어있는 응답을 반환했습니다.")
         return text
 
@@ -84,6 +100,10 @@ class AIBrain:
         return messages
 
     def _pick_primary_text(self, response: Any) -> str:
+        text_attr = getattr(response, "text", None)
+        if isinstance(text_attr, str) and text_attr.strip():
+            return text_attr.strip()
+
         try:
             candidates = response.candidates  # type: ignore[attr-defined]
         except AttributeError as exc:
@@ -93,9 +113,19 @@ class AIBrain:
             parts = getattr(candidate, "content", None)
             if not parts:
                 continue
-            text = getattr(parts, "parts", None)
-            if isinstance(text, list):
-                accumulated = "".join(str(chunk.text) for chunk in text if getattr(chunk, "text", None))
-                if accumulated:
-                    return accumulated
+            text_parts = getattr(parts, "parts", None)
+            if isinstance(text_parts, list):
+                accumulated_parts: list[str] = []
+                for chunk in text_parts:
+                    chunk_text = getattr(chunk, "text", None)
+                    if isinstance(chunk_text, str) and chunk_text:
+                        accumulated_parts.append(chunk_text)
+                if accumulated_parts:
+                    return "".join(accumulated_parts)
         return ""
+
+    @staticmethod
+    def _mask_key(key: str) -> str:
+        if len(key) <= 8:
+            return "*" * len(key)
+        return f"{key[:4]}***{key[-4:]}"
