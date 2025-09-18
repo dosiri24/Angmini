@@ -57,11 +57,11 @@
     - [x] 2.2.4: `ai/react_engine/prompt_templates/`: `system_prompt.md`, `react_prompt.md` 등 프롬프트 템플릿 파일 생성
     - [x] 2.2.5: `ai/react_engine/agent_scratchpad.py`: 확장된 사고/관찰 기록 모듈 (React Engine Stage 2로 이관)
 
-- [ ] **2.3: 루프 제어 및 계획 조정**
-    - [ ] 2.3.1: `ExecutionContext`에 시도/시간 추적 헬퍼 추가하고 GoalExecutor의 시도 관리 코드를 이 헬퍼로 이관
-    - [ ] 2.3.2: `ai/react_engine/loop_detector.py`: `LoopDetector`가 `ExecutionContext`의 헬퍼와 실패 로그를 활용해 반복 패턴을 감지하고 이벤트를 발행하도록 구현
-    - [ ] 2.3.3: `ai/react_engine/planning_engine.py`: 현재 계획과 실패 원인을 평가해 "재시도"와 "재계획" 경로를 명확히 구분하는 인터페이스 구현
-    - [ ] 2.3.4: GoalExecutor에 LoopDetector/PlanningEngine을 주입하고, 기존 재시도 로직과 역할이 겹치지 않도록 통합
+- [x] **2.3: 루프 제어 및 계획 조정**
+    - [x] 2.3.1: `ExecutionContext`에 시도/시간 추적 헬퍼 추가하고 GoalExecutor의 시도 관리 코드를 이 헬퍼로 이관
+    - [x] 2.3.2: `ai/react_engine/loop_detector.py`: `LoopDetector`가 `ExecutionContext`의 헬퍼와 실패 로그를 활용해 반복 패턴을 감지하고 이벤트를 발행하도록 구현
+    - [x] 2.3.3: `ai/react_engine/planning_engine.py`: 현재 계획과 실패 원인을 평가해 "재시도"와 "재계획" 경로를 명확히 구분하는 인터페이스 구현
+    - [x] 2.3.4: GoalExecutor에 LoopDetector/PlanningEngine을 주입하고, 기존 재시도 로직과 역할이 겹치지 않도록 통합
 
 - [ ] **2.4: 첫 번째 도구 및 통합**
     - [ ] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현

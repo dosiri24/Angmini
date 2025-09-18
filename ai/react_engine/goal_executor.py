@@ -12,16 +12,19 @@ from ai.core.logger import get_logger
 from mcp.tool_manager import ToolManager
 
 from .agent_scratchpad import AgentScratchpad
+from .loop_detector import LoopDetection, LoopDetector
 from .models import (
     ExecutionContext,
     FailureLogEntry,
     PlanStep,
     PlanStepStatus,
     PlanUpdatedEvent,
+    PlanningDecision,
     StepCompletedEvent,
     StepOutcome,
     StepResult,
 )
+from .planning_engine import PlanningEngine
 from .safety_guard import SafetyGuard
 from .step_executor import StepExecutor
 
@@ -37,6 +40,8 @@ class GoalExecutor:
         safety_guard: SafetyGuard,
         scratchpad: AgentScratchpad,
         *,
+        loop_detector: LoopDetector | None = None,
+        planning_engine: PlanningEngine | None = None,
         template_dir: Optional[Path] = None,
     ) -> None:
         self._brain = brain
@@ -44,6 +49,8 @@ class GoalExecutor:
         self._step_executor = step_executor
         self._safety_guard = safety_guard
         self._scratchpad = scratchpad
+        self._loop_detector = loop_detector or LoopDetector()
+        self._planning_engine = planning_engine or PlanningEngine(safety_guard)
         self._logger = get_logger(self.__class__.__name__)
 
         base_dir = template_dir or Path(__file__).resolve().parent / "prompt_templates"
@@ -63,12 +70,13 @@ class GoalExecutor:
 
             self._safety_guard.check()
             step.mark_in_progress()
-            attempts = self._increment_attempt(context, step.id)
-            self._logger.info("Executing step %s (attempt %s)", step.id, attempts)
+            context.note_step_started(step.id)
+            attempt = context.increment_attempt(step.id)
+            self._logger.info("Executing step %s (attempt %s)", step.id, attempt)
             self._scratchpad.add(f"executing step #{step.id}: {step.description}")
 
             self._safety_guard.note_step()
-            result = self._step_executor.execute(step, context, attempts)
+            result = self._step_executor.execute(step, context, attempt)
             self._handle_step_result(context, step, result)
 
         return context
@@ -86,7 +94,8 @@ class GoalExecutor:
             raise EngineError("LLM이 빈 계획을 반환했습니다.")
 
         context.plan_steps = steps
-        context.metadata["attempts"] = {}
+        context.attempt_counts.clear()
+        context.step_started_at.clear()
         context.current_step_index = 0
         context.record_event(PlanUpdatedEvent(plan_steps=steps, reason=reason))
         self._scratchpad.add("plan updated:\n" + context.as_plan_checklist())
@@ -166,15 +175,13 @@ class GoalExecutor:
         context.current_step_index = None
         return None
 
-    def _increment_attempt(self, context: ExecutionContext, step_id: int) -> int:
-        attempts: Dict[int, int] = context.metadata.setdefault("attempts", {})
-        attempts[step_id] = attempts.get(step_id, 0) + 1
-        return attempts[step_id]
-
     def _handle_step_result(self, context: ExecutionContext, step: PlanStep, result: StepResult) -> None:
         if result.outcome == StepOutcome.SUCCESS:
             step.mark_done()
-            context.record_event(StepCompletedEvent(step_id=step.id, outcome=result.outcome, data=result.data))
+            context.reset_attempt(step.id)
+            context.record_event(
+                StepCompletedEvent(step_id=step.id, outcome=result.outcome, data=result.data)
+            )
             context.append_scratch(f"step #{step.id} 완료")
             return
 
@@ -187,21 +194,26 @@ class GoalExecutor:
         context.add_failure(failure_entry)
         context.append_scratch(f"step #{step.id} 실패: {failure_entry.error_message}")
 
-        if result.outcome == StepOutcome.RETRY:
-            max_attempts = self._safety_guard.max_attempts_per_step
-            if result.should_retry(max_attempts):
-                step.status = PlanStepStatus.TODO
-                return
-            self._logger.warning(
-                "Step %s 최대 시도 횟수 초과(%s). 계획 재생성 시도.",
-                step.id,
-                max_attempts,
-            )
-            self._update_plan(context, reason=f"step {step.id} failed repeatedly")
+        loop_detection: LoopDetection | None = self._loop_detector.evaluate(context, step, result)
+        decision: PlanningDecision = self._planning_engine.evaluate(
+            context,
+            step,
+            result,
+            loop_detection.reason if loop_detection else None,
+        )
+
+        if decision.action == "retry":
+            step.status = PlanStepStatus.TODO
+            self._logger.info(decision.reason)
+            return
+
+        if decision.action == "replan":
+            self._logger.warning(decision.reason)
+            self._update_plan(context, reason=decision.reason)
             return
 
         raise EngineError(
-            f"Step {step.id} 실행 중 복구 불가능한 오류가 발생했습니다: {result.error_reason}"
+            decision.reason or f"Step {step.id}에서 복구 불가능한 오류가 발생했습니다."
         )
 
     # Future: integrate thinking loop with react prompt
