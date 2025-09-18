@@ -15,6 +15,7 @@ else:
 from ai.core.config import Config
 from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
+from mcp import create_default_tool_manager
 
 
 def run_bot(config: Config) -> None:
@@ -28,10 +29,13 @@ def run_bot(config: Config) -> None:
     intents = discord.Intents.default()
     intents.message_content = True
 
+    tool_manager = create_default_tool_manager()
+
     client = _build_client(intents)
 
     logger = get_logger(__name__)
     logger.info("Starting Discord bot")
+    logger.debug("Registered tools: %s", list(tool_manager.registered_names()))
 
     try:
         client.run(token)

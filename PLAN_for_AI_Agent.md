@@ -63,10 +63,16 @@
     - [x] 2.3.3: `ai/react_engine/planning_engine.py`: 현재 계획과 실패 원인을 평가해 "재시도"와 "재계획" 경로를 명확히 구분하는 인터페이스 구현
     - [x] 2.3.4: GoalExecutor에 LoopDetector/PlanningEngine을 주입하고, 기존 재시도 로직과 역할이 겹치지 않도록 통합
 
-- [ ] **2.4: 첫 번째 도구 및 통합**
-    - [ ] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
-    - [ ] 2.4.2: `ToolManager`에 `FileTool` 등록 (CLI/Discord 인터페이스 초기화 시 등록 완료)
-    - [ ] 2.4.3: React Engine이 `FileTool`을 호출하고 Observation을 기록하는 통합 테스트 (LLM 환경 준비 후 진행)
+- [x] **2.4: 첫 번째 도구 및 통합**
+    - [x] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
+    - [x] 2.4.2: `ToolManager`에 `FileTool` 등록 (CLI/Discord 인터페이스 초기화 시 등록 완료)
+    - [x] 2.4.3: React Engine이 `FileTool`을 호출하고 Observation을 기록하는 통합 테스트 (LLM 환경 준비 후 진행)
+
+- [ ] **2.5: 인터페이스 연결 및 실사용 검증**
+    - [ ] 2.5.1: CLI 인터페이스에 GoalExecutor를 주입하고 사용자 입력 -> 엔진 실행 -> 결과 응답 루프 구성
+    - [ ] 2.5.2: Discord 봇에 동일한 엔진 연동을 적용하고 기본 명령에 대한 응답 흐름 정리
+    - [ ] 2.5.3: `.env` 기반 LLM 설정 확인 및 엔진 초기화 오류 처리/로깅 개선
+    - [ ] 2.5.4: FileTool 시나리오를 이용한 수동 통합 검증 가이드(README 또는 docs/USAGE.md)에 기록
 
 ### 🛠️ 최근 업데이트 (2025-09-18)
 - Discord 봇 인터페이스에서 `ToolManager` 경로를 수정하고 `FileTool`을 등록하여 CLI와 동일한 파일 작업 기능을 제공하도록 정비했습니다.
