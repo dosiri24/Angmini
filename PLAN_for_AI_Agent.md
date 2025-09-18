@@ -43,6 +43,14 @@
     - [x] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
 
 - [ ] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
+    - [ ] 2.2.A: 계획 생성 LLM 프롬프트를 JSON 배열 응답으로 강제하고, `PlanStep(status)` 구조로 관리
+    - [ ] 2.2.B: Step 진행 상황(완료/진행중)을 LLM Thinking 단계에 반복 공급하여 일관성 확보
+    - [ ] 2.2.C: `StepResult(status, error_reason, attempt)` 구조와 스텝별 `max_attempts` 설정
+    - [ ] 2.2.D: 실패 시 최근 명령·파라미터·오류를 `ExecutionContext.fail_log`에 기록하고 다음 프롬프트에 제공
+    - [ ] 2.2.E: `ExecutionContext` 데이터 클래스로 목표/계획/현재 단계/실패 로그를 중앙 관리
+    - [ ] 2.2.F: 계획 자체가 틀렸을 때 이유를 포함해 LLM에게 재계획 요청 경로 마련
+    - [ ] 2.2.G: 스모크 테스트는 최소 구조 확인용으로 유지, 실제 시나리오는 실 환경으로 검증
+    - [ ] 2.2.H: `PlanStep`, `StepResult`, `ExecutionContext`, `StepCompletedEvent` 등 DTO/이벤트 정의
     - [ ] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
     - [ ] 2.2.2: `ai/react_engine/step_executor.py`: StepExecutor 구현 (도구 실행 및 결과 검증)
     - [ ] 2.2.3: `ai/react_engine/safety_guard.py`: SafetyGuard 구현 (기본 단계/재시도 제한)
