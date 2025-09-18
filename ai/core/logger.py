@@ -8,10 +8,26 @@ from typing import Optional
 _DEFAULT_LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 _DEFAULT_LOGGER_NAME = "personal_ai_assistant"
 
+_CONFIGURED = False
+
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure the root logger with a consistent format."""
-    logging.basicConfig(level=_coerce_level(level), format=_DEFAULT_LOG_FORMAT)
+    """Configure the root logger exactly once and update the log level."""
+    global _CONFIGURED
+
+    root_logger = logging.getLogger()
+    numeric_level = _coerce_level(level)
+    root_logger.setLevel(numeric_level)
+
+    if not _CONFIGURED:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter(_DEFAULT_LOG_FORMAT))
+        root_logger.handlers.clear()
+        root_logger.addHandler(handler)
+        _CONFIGURED = True
+    else:
+        for handler in root_logger.handlers:
+            handler.setFormatter(logging.Formatter(_DEFAULT_LOG_FORMAT))
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:

@@ -37,10 +37,10 @@
 
 ## 🟡 Phase 2: ReAct Engine 구현 (3-4주) - *핵심*
 
-- [ ] **2.1: LLM 및 기본 데이터 구조**
-    - [ ] 2.1.1: `ai/ai_brain.py`: Google Gemini API와 연동하는 `AIBrain` 클래스 구현 (구 `LLMProvider`)
-    - [ ] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
-    - [ ] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
+- [x] **2.1: LLM 및 기본 데이터 구조**
+    - [x] 2.1.1: `ai/ai_brain.py`: Google Gemini API와 연동하는 `AIBrain` 클래스 구현 (구 `LLMProvider`)
+    - [x] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
+    - [x] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
 
 - [ ] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
     - [ ] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
