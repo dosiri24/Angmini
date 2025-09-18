@@ -42,24 +42,26 @@
     - [x] 2.1.2: `mcp/tool_blueprint.py`: 모든 도구의 기반이 될 `ToolBlueprint` 추상 클래스와 `ToolResult` 데이터 클래스 정의 (구 `BaseTool`)
     - [x] 2.1.3: `mcp/tool_manager.py`: 도구를 등록하고 실행 요청을 라우팅하는 `ToolManager` 클래스 구현 (구 `ToolRegistry`)
 
-- [ ] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
-    - [ ] 2.2.A: 계획 생성 LLM 프롬프트를 JSON 배열 응답으로 강제하고, `PlanStep(status)` 구조로 관리
-    - [ ] 2.2.B: Step 진행 상황(완료/진행중)을 LLM Thinking 단계에 반복 공급하여 일관성 확보
-    - [ ] 2.2.C: `StepResult(status, error_reason, attempt)` 구조와 스텝별 `max_attempts` 설정
-    - [ ] 2.2.D: 실패 시 최근 명령·파라미터·오류를 `ExecutionContext.fail_log`에 기록하고 다음 프롬프트에 제공
-    - [ ] 2.2.E: `ExecutionContext` 데이터 클래스로 목표/계획/현재 단계/실패 로그를 중앙 관리
-    - [ ] 2.2.F: 계획 자체가 틀렸을 때 이유를 포함해 LLM에게 재계획 요청 경로 마련
-    - [ ] 2.2.G: 스모크 테스트는 최소 구조 확인용으로 유지, 실제 시나리오는 실 환경으로 검증
-    - [ ] 2.2.H: `PlanStep`, `StepResult`, `ExecutionContext`, `StepCompletedEvent` 등 DTO/이벤트 정의
-    - [ ] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
-    - [ ] 2.2.2: `ai/react_engine/step_executor.py`: StepExecutor 구현 (도구 실행 및 결과 검증)
-    - [ ] 2.2.3: `ai/react_engine/safety_guard.py`: SafetyGuard 구현 (기본 단계/재시도 제한)
-    - [ ] 2.2.4: `ai/react_engine/prompt_templates/`: `system_prompt.md`, `react_prompt.md` 등 프롬프트 템플릿 파일 생성
-    - [ ] 2.2.5: `ai/react_engine/agent_scratchpad.py`: 확장된 사고/관찰 기록 모듈 (React Engine Stage 2로 이관)
+- [x] **2.2: ReAct 엔진 핵심 로직 (MVP Stage 1 완료)**
+    - [x] 2.2.A: 계획 생성 LLM 프롬프트를 JSON 배열 응답으로 강제하고, `PlanStep(status)` 구조로 관리
+    - [x] 2.2.B: Step 진행 상황(완료/진행중)을 LLM Thinking 단계에 반복 공급하여 일관성 확보
+    - [x] 2.2.C: `StepResult(status, error_reason, attempt)` 구조와 스텝별 `max_attempts` 설정
+    - [x] 2.2.D: 실패 시 최근 명령·파라미터·오류를 `ExecutionContext.fail_log`에 기록하고 다음 프롬프트에 제공
+    - [x] 2.2.E: `ExecutionContext` 데이터 클래스로 목표/계획/현재 단계/실패 로그를 중앙 관리
+    - [x] 2.2.F: 계획 자체가 틀렸을 때 이유를 포함해 LLM에게 재계획 요청 경로 마련
+    - [x] 2.2.G: 스모크 테스트는 최소 구조 확인용으로 유지, 실제 시나리오는 실 환경으로 검증
+    - [x] 2.2.H: `PlanStep`, `StepResult`, `ExecutionContext`, `StepCompletedEvent` 등 DTO/이벤트 정의
+    - [x] 2.2.1: `ai/react_engine/goal_executor.py`: GoalExecutor 구현 (Function Calling 기반 계획 수립 + 실행 루프)
+    - [x] 2.2.2: `ai/react_engine/step_executor.py`: StepExecutor 구현 (도구 실행 및 결과 검증)
+    - [x] 2.2.3: `ai/react_engine/safety_guard.py`: SafetyGuard 구현 (기본 단계/재시도 제한)
+    - [x] 2.2.4: `ai/react_engine/prompt_templates/`: `system_prompt.md`, `react_prompt.md` 등 프롬프트 템플릿 파일 생성
+    - [x] 2.2.5: `ai/react_engine/agent_scratchpad.py`: 확장된 사고/관찰 기록 모듈 (React Engine Stage 2로 이관)
 
-- [ ] **2.3: 루프 제어 및 계획**
-    - [ ] 2.3.1: `ai/react_engine/loop_detector.py`: `LoopDetector` 클래스 구현 (동일 액션 반복 감지 로직)
-    - [ ] 2.3.2: `ai/react_engine/planning_engine.py`: `PlanningEngine` 클래스 기본 골격 구현 (복잡도 평가 로직 우선)
+- [ ] **2.3: 루프 제어 및 계획 조정**
+    - [ ] 2.3.1: `ExecutionContext`에 시도/시간 추적 헬퍼 추가하고 GoalExecutor의 시도 관리 코드를 이 헬퍼로 이관
+    - [ ] 2.3.2: `ai/react_engine/loop_detector.py`: `LoopDetector`가 `ExecutionContext`의 헬퍼와 실패 로그를 활용해 반복 패턴을 감지하고 이벤트를 발행하도록 구현
+    - [ ] 2.3.3: `ai/react_engine/planning_engine.py`: 현재 계획과 실패 원인을 평가해 "재시도"와 "재계획" 경로를 명확히 구분하는 인터페이스 구현
+    - [ ] 2.3.4: GoalExecutor에 LoopDetector/PlanningEngine을 주입하고, 기존 재시도 로직과 역할이 겹치지 않도록 통합
 
 - [ ] **2.4: 첫 번째 도구 및 통합**
     - [ ] 2.4.1: `mcp/tools/file_tool.py`: 파일 읽기/쓰기/목록 조회를 수행하는 `FileTool` 구현
