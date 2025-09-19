@@ -83,11 +83,11 @@
 
 ## 🔵 Phase 3: 도구 확장 (2-3주)
 
-- [ ] **3.1: Notion 도구 구현**
-    - [ ] 3.1.1: `mcp/tools/notion_tool.py`: `NotionTool` 클래스 구현
-    - [ ] 3.1.2: Notion API 클라이언트 초기화 및 인증
-    - [ ] 3.1.3: 일정 추가/조회, 할일 추가/조회 기능 구현
-    - [ ] 3.1.4: `ToolManager`에 `NotionTool` 등록 (구 `ToolRegistry`)
+- [x] **3.1: Notion 도구 구현**
+    - [x] 3.1.1: `mcp/tools/notion_tool.py`: `NotionTool` 클래스 구현
+    - [x] 3.1.2: Notion API 클라이언트 초기화 및 인증
+    - [x] 3.1.3: 일정 추가/조회, 할일 추가/조회 기능 구현
+    - [x] 3.1.4: `ToolManager`에 `NotionTool` 등록 (구 `ToolRegistry`)
 
 - [ ] **3.2: 웹 도구 구현**
     - [ ] 3.2.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현

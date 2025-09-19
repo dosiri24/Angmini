@@ -59,3 +59,16 @@
 - 동일한 명령을 반복 실행하면서 실패 로그가 어떻게 누적 표시되는지 확인하면 LoopDetector 동작을 간접적으로 검증할 수 있습니다.
 
 이 과정을 따라가면 Phase 2.5 목표인 “인터페이스 ↔ ReAct 엔진 통합”이 정상적으로 작동하는지 빠르게 점검할 수 있습니다.
+
+---
+
+## 5. NotionTool 사용 팁 (Phase 3.1)
+- `.env` 또는 실행 환경에 `NOTION_API_KEY`와 사용할 데이터베이스 ID(`NOTION_EVENTS_DATABASE_ID`, `NOTION_TODO_DATABASE_ID`)를 등록하세요. (기존 `NOTION_TASKS_DATABASE_ID` 값을 설정해 둔 경우에도 자동으로 인식합니다.)
+- CLI/Discord에서 다음과 같이 요청할 수 있습니다.
+  - `operation=create_event`, `title`, `date`를 전달하면 지정한 캘린더 DB에 일정이 생성됩니다.
+- `operation=create_todo`/`create_task`, `title`, `status` 또는 `due_date`를 지정하면 할일(투두) 데이터베이스에 새 카드가 추가됩니다.
+- `operation=list_events` 또는 `list_tasks`/`list_todo`/`list_todos`는 해당 데이터베이스의 최신 항목을 요약해 돌려줍니다. `page_size`, `filter`, `sorts`도 그대로 전달할 수 있습니다.
+- Notion 속성 이름이 다른 경우 `properties` 파라미터로 raw payload를 덮어쓰면 커스텀 스키마에도 대응할 수 있습니다.
+- 환경 변수 대신 `database_id` 파라미터를 직접 넘기면 특정 페이지/데이터베이스를 즉시 타겟팅할 수 있습니다.
+
+정상적으로 수행되면 도구 응답에 Notion 페이지 ID와 URL이 포함되어 빠르게 결과를 확인할 수 있습니다.
