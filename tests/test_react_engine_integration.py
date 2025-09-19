@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, List, Optional
 
 import pytest
 
@@ -22,8 +22,10 @@ class DummyBrain:
         return self._plan_json
 
 
-@pytest.mark.parametrize("operation", ["list", "read", "write"])
-def test_goal_executor_with_file_tool(tmp_path: Path, operation: str) -> None:
+@pytest.mark.parametrize("operation", ["list", "read", "write", "move", "trash"])
+def test_goal_executor_with_file_tool(
+    tmp_path: Path, operation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     setup_logging("WARNING")
 
     target_dir = tmp_path / "workspace"
@@ -31,16 +33,38 @@ def test_goal_executor_with_file_tool(tmp_path: Path, operation: str) -> None:
     sample_file = target_dir / "sample.txt"
     sample_file.write_text("hello", encoding="utf-8")
 
+    move_destination: Optional[Path] = None
+    trash_target: Optional[Path] = None
+    trashed_paths: List[str] = []
+
     if operation == "list":
         parameters: dict[str, Any] = {"operation": "list", "path": str(target_dir)}
     elif operation == "read":
         parameters = {"operation": "read", "path": str(sample_file)}
-    else:  # write
+    elif operation == "write":
         parameters = {
             "operation": "write",
             "path": str(target_dir / "written.txt"),
             "content": "integration-test",
         }
+    elif operation == "move":
+        move_destination = target_dir / "moved" / sample_file.name
+        parameters = {
+            "operation": "move",
+            "path": str(sample_file),
+            "destination": str(move_destination),
+        }
+    else:  # trash
+        trash_target = target_dir / "trash.txt"
+        trash_target.write_text("bye", encoding="utf-8")
+
+        def fake_send2trash(path: str) -> None:
+            trashed_paths.append(path)
+            Path(path).unlink()
+
+        monkeypatch.setattr("mcp.tools.file_tool.send2trash", fake_send2trash)
+
+        parameters = {"operation": "trash", "path": str(trash_target)}
 
     plan_json = (
         "[{"
@@ -79,6 +103,14 @@ def test_goal_executor_with_file_tool(tmp_path: Path, operation: str) -> None:
     elif operation == "read":
         last_event = context.events[-1]
         assert getattr(last_event, "data", None) is not None
+    elif operation == "move":
+        assert move_destination is not None
+        assert move_destination.exists()
+        assert not sample_file.exists()
+    elif operation == "trash":
+        assert trash_target is not None
+        assert trashed_paths == [str(trash_target)]
+        assert not trash_target.exists()
     else:
         last_event = context.events[-1]
         assert getattr(last_event, "data", None) is not None

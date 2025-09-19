@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import json
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List
+
+from send2trash import send2trash
 
 from ai.core.exceptions import ToolError
 from ai.core.logger import get_logger
@@ -20,12 +22,16 @@ class FileTool(ToolBlueprint):
     parameters: Dict[str, Any] = {
         "operation": {
             "type": "string",
-            "enum": ["read", "write", "list"],
+            "enum": ["read", "write", "list", "move", "trash"],
             "description": "수행할 작업 종류",
         },
         "path": {
             "type": "string",
             "description": "대상 파일 또는 디렉토리 경로",
+        },
+        "destination": {
+            "type": "string",
+            "description": "move 작업 시 이동할 경로",
         },
         "content": {
             "type": "string",
@@ -46,8 +52,8 @@ class FileTool(ToolBlueprint):
 
     def run(self, **kwargs: Any) -> ToolResult:
         operation = kwargs.get("operation")
-        if operation not in {"read", "write", "list"}:
-            raise ToolError("operation 파라미터는 read/write/list 중 하나여야 합니다.")
+        if operation not in {"read", "write", "list", "move", "trash"}:
+            raise ToolError("operation 파라미터는 read/write/list/move/trash 중 하나여야 합니다.")
 
         raw_path = kwargs.get("path")
         if not isinstance(raw_path, str) or not raw_path.strip():
@@ -63,6 +69,15 @@ class FileTool(ToolBlueprint):
                 if not isinstance(content, str):
                     raise ToolError("write 작업에는 content 문자열이 필요합니다.")
                 return self._write_file(target_path, content)
+            if operation == "move":
+                destination_raw = kwargs.get("destination")
+                if not isinstance(destination_raw, str) or not destination_raw.strip():
+                    raise ToolError("move 작업에는 destination 문자열이 필요합니다.")
+                destination_path = self._resolve_path(destination_raw)
+                return self._move_path(target_path, destination_path)
+            if operation == "trash":
+                return self._move_to_trash(target_path)
+
             recursive = bool(kwargs.get("recursive", False))
             include_hidden = bool(kwargs.get("include_hidden", False))
             return self._list_directory(target_path, recursive, include_hidden)
@@ -96,6 +111,38 @@ class FileTool(ToolBlueprint):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return ToolResult(success=True, data={"path": str(path), "bytes_written": len(content.encode('utf-8'))})
+
+    def _move_path(self, source: Path, destination: Path) -> ToolResult:
+        if not source.exists():
+            raise ToolError(f"이동할 경로를 찾을 수 없습니다: {source}")
+
+        source_resolved = source.resolve()
+        destination_resolved = destination.resolve(strict=False)
+        if source_resolved == destination_resolved:
+            raise ToolError("source와 destination이 동일합니다.")
+
+        try:
+            if not destination.exists():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+            moved_to = Path(shutil.move(str(source), str(destination)))
+        except Exception as exc:  # pragma: no cover - shutil errors depend on filesystem state
+            raise ToolError(f"파일 이동에 실패했습니다: {exc}") from exc
+
+        return ToolResult(
+            success=True,
+            data={"source": str(source_resolved), "destination": str(moved_to.resolve())},
+        )
+
+    def _move_to_trash(self, path: Path) -> ToolResult:
+        if not path.exists():
+            raise ToolError(f"휴지통으로 이동할 파일을 찾을 수 없습니다: {path}")
+
+        try:
+            send2trash(str(path))
+        except Exception as exc:  # pragma: no cover - third-party failure
+            raise ToolError(f"휴지통 이동에 실패했습니다: {exc}") from exc
+
+        return ToolResult(success=True, data={"path": str(path), "action": "trashed"})
 
     def _list_directory(self, path: Path, recursive: bool, include_hidden: bool) -> ToolResult:
         if not path.exists() or not path.is_dir():
