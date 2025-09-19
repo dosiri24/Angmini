@@ -83,6 +83,8 @@ def _interactive_loop(
                 print()
             print(f"assistant 응답: {message}")
 
+        executor_factory.record_turn(user_input, message)
+
 
 def _extract_direct_message(context) -> str | None:
     metadata_message = context.metadata.get("final_message")

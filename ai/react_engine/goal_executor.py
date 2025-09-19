@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from ai.ai_brain import AIBrain
 from ai.core.exceptions import EngineError
@@ -12,6 +12,7 @@ from ai.core.logger import get_logger
 from mcp.tool_manager import ToolManager
 
 from .agent_scratchpad import AgentScratchpad
+from .conversation_memory import ConversationMemory
 from .loop_detector import LoopDetection, LoopDetector
 from .models import (
     ExecutionContext,
@@ -43,6 +44,7 @@ class GoalExecutor:
         loop_detector: LoopDetector | None = None,
         planning_engine: PlanningEngine | None = None,
         template_dir: Optional[Path] = None,
+        conversation_memory: ConversationMemory | None = None,
     ) -> None:
         self._brain = brain
         self._tool_manager = tool_manager
@@ -52,6 +54,7 @@ class GoalExecutor:
         self._loop_detector = loop_detector or LoopDetector()
         self._planning_engine = planning_engine or PlanningEngine(safety_guard)
         self._logger = get_logger(self.__class__.__name__)
+        self._conversation_memory = conversation_memory or ConversationMemory()
 
         base_dir = template_dir or Path(__file__).resolve().parent / "prompt_templates"
         self._system_prompt = (base_dir / "system_prompt.md").read_text(encoding="utf-8")
@@ -117,15 +120,41 @@ class GoalExecutor:
     ) -> str:
         tool_lines = []
         for name, info in tools.items():
-            description = info.get("description", "")
-            tool_lines.append(f"- {name}: {description}")
+            description = info.get("description", "") or "(설명 없음)"
+            params = info.get("parameters") or {}
+            lines = [f"- {name}: {description}"]
+            if isinstance(params, dict) and params:
+                lines.append("  사용 가능한 매개변수:")
+                for param_name, spec in params.items():
+                    if not isinstance(spec, dict):
+                        spec = {}
+                    type_hint = spec.get("type")
+                    enum_hint = spec.get("enum")
+                    details = []
+                    if isinstance(type_hint, str):
+                        details.append(f"type={type_hint}")
+                    if isinstance(enum_hint, list) and enum_hint:
+                        enum_text = "/".join(str(value) for value in enum_hint)
+                        details.append(f"options={enum_text}")
+                    detail_suffix = f" ({', '.join(details)})" if details else ""
+                    description_hint = spec.get("description") or ""
+                    lines.append(
+                        f"    - {param_name}{detail_suffix}: {description_hint}".rstrip()
+                    )
+                example = self._format_tool_example(name, params)
+                if example:
+                    lines.append(f"  예시 호출: {example}")
+            tool_lines.append("\n".join(lines))
         tools_block = "\n".join(tool_lines) if tool_lines else "(등록된 도구 없음)"
 
+        memory_block = self._conversation_memory.formatted(limit=10)
+        self._logger.debug("Conversation memory snapshot:\n%s", memory_block)
         reason_block = f"이전에 실패한 이유: {reason}\n" if reason else ""
         return (
             f"{self._system_prompt}\n\n"
             f"사용자 목표: {goal}\n"
             f"사용 가능한 도구 목록:\n{tools_block}\n\n"
+            f"최근 대화 기록:\n{memory_block}\n\n"
             f"현재 계획 체크리스트:\n{context.as_plan_checklist() or '(계획 없음)'}\n\n"
             f"최근 실패 로그:\n{context.fail_log_summary()}\n\n"
             f"{reason_block}"
@@ -136,6 +165,15 @@ class GoalExecutor:
 
     def _parse_plan_response(self, response: str) -> List[PlanStep]:
         cleaned = response.strip()
+        if "```" in cleaned:
+            first_fence = cleaned.find("```")
+            last_fence = cleaned.rfind("```")
+            if first_fence != -1 and last_fence != -1 and first_fence != last_fence:
+                fenced = cleaned[first_fence + 3 : last_fence].strip()
+                if fenced.startswith("json"):
+                    fenced = fenced[4:].lstrip()
+                cleaned = fenced or cleaned
+
         if cleaned.startswith("```"):
             lines = cleaned.splitlines()
             if lines:
@@ -181,6 +219,10 @@ class GoalExecutor:
             params = item.get("parameters") or {}
             if not isinstance(params, dict):
                 params = {}
+            action_value = params.get("action")
+            if "operation" not in params and isinstance(action_value, str):
+                params["operation"] = action_value
+            params.pop("action", None)
             steps.append(
                 PlanStep(
                     id=step_id,
@@ -264,3 +306,35 @@ class GoalExecutor:
             .replace("{{current_step}}", current_text)
             .replace("{{scratchpad}}", self._scratchpad.dump(limit=10) or "(empty)")
         )
+
+    def _format_tool_example(self, name: str, params: Mapping[str, Any]) -> str:
+        sample: Dict[str, Any] = {}
+        for param_name, spec in params.items():
+            value: Any
+            if isinstance(spec, dict):
+                enum_hint = spec.get("enum")
+                type_hint = spec.get("type")
+                if isinstance(enum_hint, list) and enum_hint:
+                    value = enum_hint[0]
+                elif type_hint == "boolean":
+                    value = False
+                elif type_hint == "integer":
+                    value = 0
+                elif type_hint == "number":
+                    value = 0
+                elif param_name == "path":
+                    value = "~/Desktop"
+                else:
+                    value = f"<{param_name}>"
+            else:
+                value = f"<{param_name}>"
+            sample[param_name] = value
+
+        if not sample:
+            return ""
+
+        example = {"tool": name, "parameters": sample}
+        try:
+            return json.dumps(example, ensure_ascii=False)
+        except TypeError:
+            return ""
