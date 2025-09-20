@@ -62,13 +62,18 @@
 
 ---
 
-## 5. NotionTool 사용 팁 (Phase 3.1)
-- `.env` 또는 실행 환경에 `NOTION_API_KEY`와 사용할 데이터베이스 ID(`NOTION_EVENTS_DATABASE_ID`, `NOTION_TODO_DATABASE_ID`)를 등록하세요. (기존 `NOTION_TASKS_DATABASE_ID` 값을 설정해 둔 경우에도 자동으로 인식합니다.)
+- `.env` 또는 실행 환경에 `NOTION_API_KEY`와 사용할 데이터베이스 ID(`NOTION_TODO_DATABASE_ID`, `NOTION_PROJECT_DATABASE_ID`)를 등록하세요. (기존 `NOTION_TASKS_DATABASE_ID` 값을 설정해 둔 경우에도 자동으로 인식합니다.)
 - CLI/Discord에서 다음과 같이 요청할 수 있습니다.
-  - `operation=create_event`, `title`, `date`를 전달하면 지정한 캘린더 DB에 일정이 생성됩니다.
-- `operation=create_todo`/`create_task`, `title`, `status` 또는 `due_date`를 지정하면 할일(투두) 데이터베이스에 새 카드가 추가됩니다.
-- `operation=list_events` 또는 `list_tasks`/`list_todo`/`list_todos`는 해당 데이터베이스의 최신 항목을 요약해 돌려줍니다. `page_size`, `filter`, `sorts`도 그대로 전달할 수 있습니다.
+- `operation=create_todo`/`create_task`, `title`, `status`, `due_date`, `relations` 등을 지정하면 할일(투두) 데이터베이스에 새 카드가 추가됩니다.
+- `operation=list_tasks`/`list_todo`/`list_todos`는 해당 데이터베이스의 최신 항목을 요약해 돌려줍니다. `page_size`, `filter`, `sorts`도 그대로 전달할 수 있습니다.
+- `operation=list_projects`를 호출하면 프로젝트/경험 데이터베이스에서 제목, 상태, 메모, 연결된 투두 ID 목록을 조회할 수 있습니다.
+- `operation=find_project`, `query="프로젝트 이름"`을 사용하면 관련 프로젝트 후보 목록을 가져옵니다. `limit` 파라미터를 지정하면 내부적으로 `page_size`로 변환되어 조회 수를 제한합니다. Observation에 포함된 전체 목록을 검토한 뒤, 요청 맥락과 가장 잘 맞는 프로젝트 ID를 스스로 결정하여 다음 단계에서 사용하세요.
 - Notion 속성 이름이 다른 경우 `properties` 파라미터로 raw payload를 덮어쓰면 커스텀 스키마에도 대응할 수 있습니다.
+- 기본 속성 이름(Title/Status/Due/Notes 등)이 다른 데이터베이스를 사용한다면 `.env`에 `NOTION_TASK_TITLE_PROPERTY`, `NOTION_TASK_STATUS_PROPERTY`, `NOTION_TASK_DUE_PROPERTY`, `NOTION_TASK_NOTES_PROPERTY`, `NOTION_TASK_RELATION_PROPERTY`를 설정해 도구 기본 매핑을 재정의할 수 있습니다.
+- 프로젝트 데이터베이스도 동일하게 `NOTION_PROJECT_TITLE_PROPERTY`, `NOTION_PROJECT_STATUS_PROPERTY`, `NOTION_PROJECT_NOTES_PROPERTY`, `NOTION_PROJECT_TASK_RELATION_PROPERTY`로 속성 이름을 재정의할 수 있습니다.
+- 경험/프로젝트와 같이 relation 필드를 연결하려면 `relations` 파라미터(문자열 또는 ID 배열)를 주거나 `.env`에 relation 속성 이름(`NOTION_TASK_RELATION_PROPERTY`)을 지정한 뒤 사용하세요. `list_tasks` 결과에는 `relations`에 연결된 페이지 ID 배열이 포함됩니다.
 - 환경 변수 대신 `database_id` 파라미터를 직접 넘기면 특정 페이지/데이터베이스를 즉시 타겟팅할 수 있습니다.
+- 프로젝트를 선택하려면 `find_project`로 목록을 받아 Observation을 확인한 뒤, reasoning 단계에서 적합한 항목을 고르고 그 `id`를 `create_task(relations=[...])`에 전달하세요.
+ - 제목 정리 가이드: 도구는 제목을 자동으로 수정하지 않습니다. 프로젝트/경험 relation을 연결하는 경우, 에이전트가 reasoning 단계에서 선택한 프로젝트명과 원본 작업명을 비교해 중복되는 표현을 자연스럽게 제거한 최종 `title`을 만들어 `create_task`에 전달하도록 프롬프트에 반영하세요.
 
 정상적으로 수행되면 도구 응답에 Notion 페이지 ID와 URL이 포함되어 빠르게 결과를 확인할 수 있습니다.

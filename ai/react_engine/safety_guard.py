@@ -11,7 +11,7 @@ from ai.core.exceptions import EngineError
 @dataclass(slots=True)
 class SafetyConfig:
     max_steps: int = 20
-    max_attempts_per_step: int = 3
+    max_attempts_per_step: int = 1
     max_runtime_seconds: int = 300
 
 

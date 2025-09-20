@@ -86,18 +86,24 @@
 - [x] **3.1: Notion 도구 구현**
     - [x] 3.1.1: `mcp/tools/notion_tool.py`: `NotionTool` 클래스 구현
     - [x] 3.1.2: Notion API 클라이언트 초기화 및 인증
-    - [x] 3.1.3: 일정 추가/조회, 할일 추가/조회 기능 구현
+    - [x] 3.1.3: 할일(Todo) 추가/조회 기능 구현
     - [x] 3.1.4: `ToolManager`에 `NotionTool` 등록 (구 `ToolRegistry`)
 
-- [ ] **3.2: 웹 도구 구현**
-    - [ ] 3.2.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
-    - [ ] 3.2.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
-    - [ ] 3.2.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
+- [x] **3.2: Notion Relation 확장**
+    - [x] 3.2.1: 경험/프로젝트 데이터베이스(`NOTION_PROJECT_DATABASE_ID`) 연동 및 속성 매핑 환경변수 정의
+    - [x] 3.2.2: 프로젝트 목록 조회/검색용 `list_projects` 도구 operation 추가
+    - [x] 3.2.3: 프로젝트 ID 자동 매칭 로직과 투두 생성 시 relation 연결 지원 (LLM 프롬프트 가이드 포함)
+    - [x] 3.2.4: Relation 데이터가 포함된 `list_tasks` 응답 구조 확장 및 통합 테스트 작성
 
-- [ ] **3.3: Apple 시스템 도구 구현 (선택적)**
-    - [ ] 3.3.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현
-    - [ ] 3.3.2: AppleScript 또는 `py-applescript`를 이용한 시스템 제어 기능 연구 및 구현 (예: 알림 보내기)
-    - [ ] 3.3.3: `ToolManager`에 `AppleTool` 등록 (구 `ToolRegistry`)
+- [ ] **3.3: 웹 도구 구현**
+    - [ ] 3.3.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
+    - [ ] 3.3.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
+    - [ ] 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
+
+- [ ] **3.4: Apple 시스템 도구 구현 (선택적)**
+    - [ ] 3.4.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현
+    - [ ] 3.4.2: AppleScript 또는 `py-applescript`를 이용한 시스템 제어 기능 연구 및 구현 (예: 알림 보내기)
+    - [ ] 3.4.3: `ToolManager`에 `AppleTool` 등록 (구 `ToolRegistry`)
 
 ---
 

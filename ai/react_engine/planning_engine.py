@@ -35,10 +35,16 @@ class PlanningEngine:
                     action="retry",
                     reason=f"retry allowed (attempt {result.attempt} of {max_attempts})",
                 )
-            return PlanningDecision(
-                action="replan",
-                reason=f"retry limit {max_attempts} reached for step {step.id}",
-            )
+            reason = result.error_reason or f"retry limit {max_attempts} reached for step {step.id}"
+            return PlanningDecision(action="replan", reason=reason)
 
-        # For any non-retry failure, surface as abort so caller can raise.
+        if result.outcome == StepOutcome.FAILED:
+            reason = result.error_reason or "step failed"
+            category = None
+            if isinstance(result.data, dict):
+                category = result.data.get("error_category")
+            if category:
+                reason = f"{category}: {reason}"
+            return PlanningDecision(action="replan", reason=reason)
+
         return PlanningDecision(action="abort", reason=result.error_reason or "unknown failure")

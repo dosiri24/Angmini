@@ -1,9 +1,11 @@
-"""Notion scheduling and task management tool."""
+"""Notion task and project management tool."""
 
 from __future__ import annotations
 
 import os
+from difflib import SequenceMatcher
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 try:
     from notion_client import Client  # type: ignore
@@ -20,18 +22,18 @@ from ..tool_blueprint import ToolBlueprint, ToolResult
 
 
 class NotionTool(ToolBlueprint):
-    """Provides CRUD-style helpers for Notion calendars and task databases."""
+    """Provides helpers for Notion todo databases and related project metadata."""
 
     tool_name = "notion"
-    description = "Notion 일정/할일 추가 및 조회 도구"
+    description = "Notion 할일 데이터베이스 관리 도구"
     parameters: Dict[str, Any] = {
         "operation": {
             "type": "string",
             "enum": [
-                "create_event",
-                "list_events",
                 "create_task",
                 "list_tasks",
+                "list_projects",
+                "find_project",
                 "create_todo",
                 "list_todo",
                 "list_todos",
@@ -44,10 +46,6 @@ class NotionTool(ToolBlueprint):
             "type": "string",
             "description": "Notion 페이지 제목",
         },
-        "date": {
-            "type": "string",
-            "description": "이벤트 시작 날짜 (ISO 8601)",
-        },
         "due_date": {
             "type": "string",
             "description": "할일 마감일 (ISO 8601)",
@@ -59,6 +57,26 @@ class NotionTool(ToolBlueprint):
         "notes": {
             "type": "string",
             "description": "추가 설명 또는 메모",
+        },
+        "relations": {
+            "type": "array",
+            "description": "연결할 relation 대상 페이지 ID 목록",
+        },
+        "relation_ids": {
+            "type": "array",
+            "description": "relations 별칭 (동일한 의미)",
+        },
+        "query": {
+            "type": "string",
+            "description": "프로젝트 검색 시 사용할 키워드",
+        },
+        "limit": {
+            "type": "integer",
+            "description": "find_project 결과에서 반환할 최대 매치 수",
+        },
+        "project_database_id": {
+            "type": "string",
+            "description": "프로젝트/경험 데이터베이스 ID",
         },
         "database_id": {
             "type": "string",
@@ -88,23 +106,74 @@ class NotionTool(ToolBlueprint):
 
     ENV_PRIMARY_TOKEN = "NOTION_API_KEY"
     ENV_FALLBACK_TOKEN = "NOTION_INTEGRATION_TOKEN"
-    ENV_EVENTS_DATABASE = "NOTION_EVENTS_DATABASE_ID"
     ENV_TODO_DATABASE = "NOTION_TODO_DATABASE_ID"
     LEGACY_ENV_TASKS_DATABASE = "NOTION_TASKS_DATABASE_ID"
+    ENV_PROJECT_DATABASE = "NOTION_PROJECT_DATABASE_ID"
+
+    ENV_TASK_TITLE_PROPERTY = "NOTION_TASK_TITLE_PROPERTY"
+    ENV_TASK_STATUS_PROPERTY = "NOTION_TASK_STATUS_PROPERTY"
+    ENV_TASK_DUE_PROPERTY = "NOTION_TASK_DUE_PROPERTY"
+    ENV_TASK_NOTES_PROPERTY = "NOTION_TASK_NOTES_PROPERTY"
+    ENV_TASK_RELATION_PROPERTY = "NOTION_TASK_RELATION_PROPERTY"
+
+    ENV_PROJECT_TITLE_PROPERTY = "NOTION_PROJECT_TITLE_PROPERTY"
+    ENV_PROJECT_STATUS_PROPERTY = "NOTION_PROJECT_STATUS_PROPERTY"
+    ENV_PROJECT_NOTES_PROPERTY = "NOTION_PROJECT_NOTES_PROPERTY"
+    ENV_PROJECT_RELATION_PROPERTY = "NOTION_PROJECT_TASK_RELATION_PROPERTY"
+
+    DEFAULT_TASK_PROPERTIES = {
+        "title": "Name",
+        "status": "Status",
+        "due": "Due",
+        "notes": "Notes",
+        "relation": None,
+    }
+
+    DEFAULT_PROJECT_PROPERTIES = {
+        "title": "Name",
+        "status": None,
+        "notes": None,
+        "relation": None,
+    }
 
     def __init__(
         self,
         client: Optional[Any] = None,
         *,
         integration_token: Optional[str] = None,
-        default_event_database_id: Optional[str] = None,
         default_todo_database_id: Optional[str] = None,
+        default_project_database_id: Optional[str] = None,
+        task_properties: Optional[Dict[str, str]] = None,
+        project_properties: Optional[Dict[str, str]] = None,
     ) -> None:
         super().__init__()
         self._client = client
         self._integration_token = integration_token
-        self._default_event_database_id = default_event_database_id or os.getenv(self.ENV_EVENTS_DATABASE)
         self._default_todo_database_id = default_todo_database_id or self._resolve_todo_database_env()
+        self._default_project_database_id = default_project_database_id or os.getenv(self.ENV_PROJECT_DATABASE)
+        self._task_properties = self._resolve_property_names(
+            overrides=task_properties,
+            defaults=self.DEFAULT_TASK_PROPERTIES,
+            env_keys={
+                "title": self.ENV_TASK_TITLE_PROPERTY,
+                "status": self.ENV_TASK_STATUS_PROPERTY,
+                "due": self.ENV_TASK_DUE_PROPERTY,
+                "notes": self.ENV_TASK_NOTES_PROPERTY,
+                "relation": self.ENV_TASK_RELATION_PROPERTY,
+            },
+            optional_keys={"relation"},
+        )
+        self._project_properties = self._resolve_property_names(
+            overrides=project_properties,
+            defaults=self.DEFAULT_PROJECT_PROPERTIES,
+            env_keys={
+                "title": self.ENV_PROJECT_TITLE_PROPERTY,
+                "status": self.ENV_PROJECT_STATUS_PROPERTY,
+                "notes": self.ENV_PROJECT_NOTES_PROPERTY,
+                "relation": self.ENV_PROJECT_RELATION_PROPERTY,
+            },
+            optional_keys={"status", "notes", "relation"},
+        )
 
     def run(self, **kwargs: Any) -> ToolResult:
         operation = self._canonical_operation(kwargs.get("operation"))
@@ -112,17 +181,12 @@ class NotionTool(ToolBlueprint):
         client = self._ensure_client()
 
         try:
-            if operation == "create_event":
-                return self._create_event(client, **kwargs)
-            if operation == "list_events":
-                return self._list_entries(
-                    client,
-                    default_database=self._default_event_database_id,
-                    env_fallback=self.ENV_EVENTS_DATABASE,
-                    **kwargs,
-                )
             if operation == "create_task":
                 return self._create_task(client, **kwargs)
+            if operation == "list_projects":
+                return self._list_projects(client, **kwargs)
+            if operation == "find_project":
+                return self._find_project(client, **kwargs)
             return self._list_entries(
                 client,
                 default_database=self._default_todo_database_id,
@@ -136,52 +200,79 @@ class NotionTool(ToolBlueprint):
         except Exception as exc:  # pragma: no cover - unexpected runtime failure
             raise ToolError(str(exc)) from exc
 
-    # ------------------------------------------------------------------
-    # Creation helpers
-    # ------------------------------------------------------------------
-
-    def _create_event(self, client: Any, **kwargs: Any) -> ToolResult:
-        database_id = self._resolve_database_id(kwargs.get("database_id"), self._default_event_database_id, self.ENV_EVENTS_DATABASE)
-        title = self._require_non_empty(kwargs.get("title"), "title")
-        notes = self._optional_str(kwargs.get("notes"))
-        date_value = self._optional_str(kwargs.get("date"))
-
-        properties = self._build_title_property(title)
-        if date_value:
-            properties["Date"] = {"date": {"start": date_value}}
-        if notes:
-            properties["Notes"] = {"rich_text": [{"text": {"content": notes[:2000]}}]}
-
-        override_properties = self._validate_properties(kwargs.get("properties"))
-        if override_properties:
-            properties.update(override_properties)
-
-        page = client.pages.create(parent={"database_id": database_id}, properties=properties)
-        return ToolResult(success=True, data={"id": page.get("id"), "url": page.get("url"), "operation": "create_event"})
-
     def _create_task(self, client: Any, **kwargs: Any) -> ToolResult:
         database_id = self._resolve_database_id(
             kwargs.get("database_id"), self._default_todo_database_id, self.ENV_TODO_DATABASE
         )
         title = self._require_non_empty(kwargs.get("title"), "title")
         notes = self._optional_str(kwargs.get("notes"))
-        due_date = self._optional_str(kwargs.get("due_date")) or self._optional_str(kwargs.get("date"))
+        due_date = self._optional_str(kwargs.get("due_date"))
         status_value = self._optional_str(kwargs.get("status"))
+        relations = self._normalise_relations(kwargs.get("relations") or kwargs.get("relation_ids"))
 
-        properties = self._build_title_property(title)
-        if due_date:
-            properties["Due"] = {"date": {"start": due_date}}
-        if status_value:
-            properties["Status"] = {"status": {"name": status_value}}
-        if notes:
-            properties["Notes"] = {"rich_text": [{"text": {"content": notes[:2000]}}]}
+        title_property_name = self._task_properties["title"]
+        properties = self._build_title_property(title, title_property_name)
+        due_property = self._task_properties.get("due")
+        if due_date and due_property:
+            properties[due_property] = {"date": {"start": self._ensure_kst_timezone(due_date)}}
+        status_property = self._task_properties.get("status")
+        if status_value and status_property:
+            properties[status_property] = {"status": {"name": status_value}}
+        notes_property = self._task_properties.get("notes")
+        if notes and notes_property:
+            properties[notes_property] = {"rich_text": [{"text": {"content": notes[:2000]}}]}
+        relation_property = self._task_properties.get("relation")
+        project_database_hint = self._optional_str(kwargs.get("project_database_id"))
+        if relations and relation_property:
+            properties[relation_property] = {"relation": relations}
+        elif relation_property:
+            raise self._missing_relation_error(
+                client,
+                task_title=title,
+                project_database_id=project_database_hint,
+            )
 
         override_properties = self._validate_properties(kwargs.get("properties"))
         if override_properties:
             properties.update(override_properties)
 
         page = client.pages.create(parent={"database_id": database_id}, properties=properties)
-        return ToolResult(success=True, data={"id": page.get("id"), "url": page.get("url"), "operation": "create_task"})
+        payload: Dict[str, Any] = {
+            "id": page.get("id"),
+            "url": page.get("url"),
+            "operation": "create_task",
+        }
+        if relations:
+            payload["relations"] = relations
+        return ToolResult(success=True, data=payload)
+
+    def _ensure_kst_timezone(self, raw: str) -> str:
+        """Ensure datetime strings with time include KST(+09:00) offset.
+
+        - If the input is a date only (YYYY-MM-DD), return as-is.
+        - If time part exists and a timezone designator (Z or ±HH:MM) is missing,
+          append "+09:00" so Notion does not treat it as UTC.
+        - If timezone is already present, return as-is.
+        """
+        text = (raw or "").strip()
+        if not text:
+            return raw
+        if "T" not in text:
+            # Date-only values should remain date-only
+            return text
+        # Time part exists; check for timezone designator
+        time_part = text.split("T", 1)[1]
+        if time_part.endswith("Z") or time_part.endswith("z"):
+            return text
+        if "+" in time_part:
+            return text
+        # Detect negative offset like -09:00 in time part
+        # The time format is HH:MM(:SS[.fff]) optionally followed by offset
+        # A '-' in time_part (beyond the hour/minute section) indicates an offset
+        if "-" in time_part[2:]:
+            return text
+        # No timezone info → append KST offset
+        return f"{text}+09:00"
 
     # ------------------------------------------------------------------
     # Listing helpers
@@ -199,31 +290,7 @@ class NotionTool(ToolBlueprint):
             kwargs.get("database_id"), default_database, env_fallback
         )
 
-        payload: Dict[str, Any] = {}
-        filter_payload = kwargs.get("filter")
-        if filter_payload is not None:
-            if not isinstance(filter_payload, dict):
-                raise ToolError("filter 파라미터는 객체(dict)여야 합니다.")
-            payload["filter"] = filter_payload
-
-        sorts_payload = kwargs.get("sorts")
-        if sorts_payload is not None:
-            if not isinstance(sorts_payload, list):
-                raise ToolError("sorts 파라미터는 배열(list)이여야 합니다.")
-            payload["sorts"] = sorts_payload
-
-        page_size = kwargs.get("page_size")
-        if page_size is not None:
-            if not isinstance(page_size, int) or page_size <= 0:
-                raise ToolError("page_size 파라미터는 0보다 큰 정수여야 합니다.")
-            payload["page_size"] = page_size
-
-        start_cursor = kwargs.get("start_cursor")
-        if start_cursor is not None:
-            if not isinstance(start_cursor, str) or not start_cursor.strip():
-                raise ToolError("start_cursor 파라미터는 비어있지 않은 문자열이어야 합니다.")
-            payload["start_cursor"] = start_cursor
-
+        payload = self._build_query_payload(kwargs)
         response = client.databases.query(database_id=database_id, **payload)
         items = [self._summarise_page(page) for page in response.get("results", [])]
 
@@ -234,6 +301,81 @@ class NotionTool(ToolBlueprint):
                 "has_more": bool(response.get("has_more")),
                 "next_cursor": response.get("next_cursor"),
                 "database_id": database_id,
+            },
+        )
+
+    def _list_projects(self, client: Any, **kwargs: Any) -> ToolResult:
+        database_id = self._resolve_database_id(
+            kwargs.get("project_database_id") or kwargs.get("database_id"),
+            self._default_project_database_id,
+            self.ENV_PROJECT_DATABASE,
+        )
+
+        payload = self._build_query_payload(kwargs)
+        response = client.databases.query(database_id=database_id, **payload)
+        items = [self._summarise_project(page) for page in response.get("results", [])]
+
+        return ToolResult(
+            success=True,
+            data={
+                "items": items,
+                "has_more": bool(response.get("has_more")),
+                "next_cursor": response.get("next_cursor"),
+                "database_id": database_id,
+            },
+        )
+
+    def _find_project(self, client: Any, **kwargs: Any) -> ToolResult:
+        query = self._require_non_empty(kwargs.get("query"), "query")
+
+        list_params = dict(kwargs)
+        list_params.pop("query", None)
+        limit = list_params.pop("limit", None)
+        if isinstance(limit, int) and limit > 0:
+            list_params["page_size"] = limit
+        list_params.pop("operation", None)
+
+        # Prefer narrowing by title contains to surface more relevant candidates.
+        # If a filter is not already provided, create a title-contains filter
+        # using the configured project title property.
+        if "filter" not in list_params or not isinstance(list_params.get("filter"), dict):
+            title_prop = self._project_properties.get("title") or "Name"
+            list_params["filter"] = {
+                "property": title_prop,
+                "title": {"contains": query},
+            }
+
+        try:
+            base_result = self._list_projects(client, **list_params)
+            data = base_result.unwrap()
+        except ToolError as exc:
+            message = str(exc)
+            if "Could not find property" in message or "not a property" in message:
+                # Retry without filter when the assumed title property is invalid
+                list_params.pop("filter", None)
+                base_result = self._list_projects(client, **list_params)
+                data = base_result.unwrap()
+            else:
+                raise
+        items = data.get("items") or []
+
+        # Return items without automatic scoring; the LLM will decide the best match
+        # based on the full list and the user's request context.
+        scored_items: list[Dict[str, Any]] = []
+        for item in items:
+            enriched = dict(item) if isinstance(item, dict) else {"value": item}
+            # deliberately no match_score field
+            scored_items.append(enriched)
+
+        return ToolResult(
+            success=True,
+            data={
+                "query": query,
+                "database_id": data.get("database_id"),
+                "has_more": data.get("has_more"),
+                "next_cursor": data.get("next_cursor"),
+                "items": scored_items,
+                "note": "이 목록을 검토하여 사용자 요청과 가장 잘 맞는 프로젝트를 선택하세요.",
             },
         )
 
@@ -293,21 +435,55 @@ class NotionTool(ToolBlueprint):
             raise ToolError("properties 파라미터는 객체(dict)여야 합니다.")
         return properties
 
-    def _build_title_property(self, title: str) -> Dict[str, Any]:
-        return {"Name": {"title": [{"text": {"content": title[:2000]}}]}}
+    def _build_title_property(self, title: str, property_name: str) -> Dict[str, Any]:
+        return {
+            property_name: {
+                "title": [
+                    {
+                        "text": {
+                            "content": title[:2000],
+                        }
+                    }
+                ]
+            }
+        }
 
     def _summarise_page(self, page: Dict[str, Any]) -> Dict[str, Any]:
         properties = page.get("properties", {}) if isinstance(page, dict) else {}
         title = self._extract_property_text(properties, target_type="title")
         status = self._extract_property_text(properties, target_type="status")
         date = self._extract_property_date(properties)
-        return {
+        summary = {
             "id": page.get("id"),
             "url": page.get("url"),
             "title": title,
             "status": status,
             "date": date,
         }
+
+        relations = self._extract_relations(properties)
+        if relations:
+            summary["relations"] = relations
+        return summary
+
+    def _summarise_project(self, page: Dict[str, Any]) -> Dict[str, Any]:
+        properties = page.get("properties", {}) if isinstance(page, dict) else {}
+        title = self._extract_title_by_name(properties, self._project_properties.get("title"))
+        status = self._extract_status_by_name(properties, self._project_properties.get("status"))
+        notes = self._extract_rich_text_by_name(properties, self._project_properties.get("notes"))
+
+        summary = {
+            "id": page.get("id"),
+            "url": page.get("url"),
+            "title": title,
+            "status": status,
+            "notes": notes,
+        }
+
+        relations = self._extract_relations(properties)
+        if relations:
+            summary["relations"] = relations
+        return summary
 
     def _extract_property_text(self, properties: Dict[str, Any], target_type: str) -> Optional[str]:
         for value in properties.values():
@@ -350,11 +526,223 @@ class NotionTool(ToolBlueprint):
                     return start
         return None
 
+    def _extract_relations(self, properties: Dict[str, Any]) -> Optional[Dict[str, list[str]]]:
+        summary: Dict[str, list[str]] = {}
+        for name, value in properties.items():
+            if not isinstance(value, dict):
+                continue
+            if value.get("type") != "relation":
+                continue
+            relation_entries = value.get("relation")
+            if not isinstance(relation_entries, list):
+                continue
+            ids: list[str] = []
+            for entry in relation_entries:
+                if not isinstance(entry, dict):
+                    continue
+                relation_id = entry.get("id")
+                if isinstance(relation_id, str) and relation_id.strip():
+                    ids.append(relation_id)
+            if ids:
+                summary[name] = ids
+        return summary or None
+
     def _resolve_todo_database_env(self) -> Optional[str]:
         todo_env = os.getenv(self.ENV_TODO_DATABASE)
         if todo_env:
             return todo_env
         return os.getenv(self.LEGACY_ENV_TASKS_DATABASE)
+
+    def _missing_relation_error(
+        self,
+        client: Any,
+        *,
+        task_title: str,
+        project_database_id: Optional[str],
+    ) -> ToolError:
+        database_id = None
+        try:
+            database_id = self._resolve_database_id(
+                project_database_id,
+                self._default_project_database_id,
+                self.ENV_PROJECT_DATABASE,
+            )
+        except ToolError:
+            pass
+
+        candidates_summary = ""
+        if database_id:
+            try:
+                snapshot = self._list_projects(
+                    client,
+                    project_database_id=database_id,
+                    page_size=10,
+                ).unwrap()
+                items = snapshot.get("items") or []
+                formatted = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    title = item.get("title") or "<제목 없음>"
+                    formatted.append(f"- {title} (id={item.get('id')})")
+                if formatted:
+                    candidates_summary = "\n" + "\n".join(formatted)
+            except ToolError:
+                pass
+            except Exception:  # pragma: no cover - defensive guard
+                pass
+
+        hint = "경험/프로젝트 relation을 지정해야 합니다."
+        if candidates_summary:
+            hint += "\n다음 프로젝트 후보 중에서 선택해 id를 relations 파라미터로 전달하세요:" + candidates_summary
+        else:
+            hint += " 프로젝트 데이터베이스를 통합에 공유했는지 확인하고, `relations=[...]` 형식으로 프로젝트 id를 전달하세요."
+
+        raise ToolError(hint)
+
+    def _extract_title_by_name(self, properties: Dict[str, Any], property_name: Optional[str]) -> Optional[str]:
+        if property_name and property_name in properties:
+            return self._extract_title_value(properties[property_name])
+        return self._extract_property_text(properties, target_type="title")
+
+    def _extract_status_by_name(self, properties: Dict[str, Any], property_name: Optional[str]) -> Optional[str]:
+        if property_name and property_name in properties:
+            return self._extract_status_value(properties[property_name])
+        return self._extract_property_text(properties, target_type="status")
+
+    def _extract_rich_text_by_name(
+        self, properties: Dict[str, Any], property_name: Optional[str]
+    ) -> Optional[str]:
+        if property_name and property_name in properties:
+            return self._extract_rich_text_value(properties[property_name])
+        return None
+
+    def _extract_title_value(self, value: Any) -> Optional[str]:
+        if not isinstance(value, dict) or value.get("type") != "title":
+            return None
+        items = value.get("title", [])
+        return self._first_rich_text(items)
+
+    def _extract_status_value(self, value: Any) -> Optional[str]:
+        if not isinstance(value, dict) or value.get("type") != "status":
+            return None
+        status = value.get("status")
+        if isinstance(status, dict):
+            name = status.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+        return None
+
+    def _extract_rich_text_value(self, value: Any) -> Optional[str]:
+        if not isinstance(value, dict) or value.get("type") != "rich_text":
+            return None
+        items = value.get("rich_text", [])
+        return self._first_rich_text(items)
+
+    def _first_rich_text(self, items: Any) -> Optional[str]:
+        if not isinstance(items, list) or not items:
+            return None
+        first = items[0]
+        if not isinstance(first, dict):
+            return None
+        plain = first.get("plain_text")
+        if isinstance(plain, str) and plain.strip():
+            return plain.strip()
+        text = first.get("text")
+        if isinstance(text, dict):
+            content = text.get("content")
+            if isinstance(content, str) and content.strip():
+                return content.strip()
+        return None
+
+    def _resolve_property_names(
+        self,
+        *,
+        overrides: Optional[Dict[str, str]],
+        defaults: Dict[str, str],
+        env_keys: Dict[str, str],
+        optional_keys: Optional[set[str]] = None,
+    ) -> Dict[str, Optional[str]]:
+        resolved: Dict[str, Optional[str]] = dict(defaults)
+
+        for key, env_key in env_keys.items():
+            env_value = os.getenv(env_key)
+            if env_value and env_value.strip():
+                resolved[key] = env_value.strip()
+
+        if overrides:
+            for key, value in overrides.items():
+                if value is None:
+                    if optional_keys and key in optional_keys:
+                        resolved[key] = None
+                        continue
+                    continue
+                if not isinstance(value, str) or not value.strip():
+                    raise ToolError("property 이름은 비어있지 않은 문자열이어야 합니다.")
+                resolved[key] = value.strip()
+
+        return resolved
+
+    def _build_query_payload(self, kwargs: Any) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {}
+
+        filter_payload = kwargs.get("filter")
+        if filter_payload is not None:
+            if not isinstance(filter_payload, dict):
+                raise ToolError("filter 파라미터는 객체(dict)여야 합니다.")
+            payload["filter"] = filter_payload
+
+        sorts_payload = kwargs.get("sorts")
+        if sorts_payload is not None:
+            if not isinstance(sorts_payload, list):
+                raise ToolError("sorts 파라미터는 배열(list)이여야 합니다.")
+            payload["sorts"] = sorts_payload
+
+        page_size = kwargs.get("page_size")
+        if page_size is not None:
+            if not isinstance(page_size, int) or page_size <= 0:
+                raise ToolError("page_size 파라미터는 0보다 큰 정수여야 합니다.")
+            payload["page_size"] = page_size
+
+        start_cursor = kwargs.get("start_cursor")
+        if start_cursor is not None:
+            if not isinstance(start_cursor, str) or not start_cursor.strip():
+                raise ToolError("start_cursor 파라미터는 비어있지 않은 문자열이어야 합니다.")
+            payload["start_cursor"] = start_cursor
+
+        return payload
+
+    def _normalise_relations(self, raw_relations: Any) -> Optional[list[Dict[str, str]]]:
+        if raw_relations is None:
+            return None
+        if isinstance(raw_relations, str):
+            relation_id = raw_relations.strip()
+            if not relation_id:
+                return None
+            return [{"id": relation_id}]
+        if isinstance(raw_relations, dict):
+            # Accept already-normalised single entry like {"id": "..."}
+            rid = raw_relations.get("id")
+            if isinstance(rid, str) and rid.strip():
+                return [{"id": rid.strip()}]
+            raise ToolError("relations 객체에는 비어있지 않은 'id' 문자열이 필요합니다.")
+        if isinstance(raw_relations, list):
+            relation_entries: list[Dict[str, str]] = []
+            for idx, item in enumerate(raw_relations):
+                if isinstance(item, str):
+                    stripped = item.strip()
+                    if not stripped:
+                        raise ToolError("relations 항목에는 비어있는 문자열을 사용할 수 없습니다.")
+                    relation_entries.append({"id": stripped})
+                elif isinstance(item, dict):
+                    rid = item.get("id")
+                    if not isinstance(rid, str) or not rid.strip():
+                        raise ToolError("relations 객체 항목에는 비어있지 않은 'id' 문자열이 필요합니다.")
+                    relation_entries.append({"id": rid.strip()})
+                else:
+                    raise ToolError("relations 항목은 문자열 또는 {'id': string} 형식이어야 합니다.")
+            return relation_entries or None
+        raise ToolError("relations 파라미터는 문자열 또는 문자열 목록이어야 합니다.")
 
     def _canonical_operation(self, raw_operation: Any) -> str:
         if not isinstance(raw_operation, str):
@@ -364,10 +752,15 @@ class NotionTool(ToolBlueprint):
             raise ToolError("operation 파라미터는 비어있지 않은 문자열이어야 합니다.")
 
         alias_map = {
-            "create_event": "create_event",
-            "list_events": "list_events",
             "create_task": "create_task",
             "list_tasks": "list_tasks",
+            "list_projects": "list_projects",
+            "project_list": "list_projects",
+            "projects_list": "list_projects",
+            "list_project": "list_projects",
+            "find_project": "find_project",
+            "project_find": "find_project",
+            "match_project": "find_project",
             "create_todo": "create_task",
             "list_todo": "list_tasks",
             "list_todos": "list_tasks",
@@ -392,5 +785,5 @@ class NotionTool(ToolBlueprint):
             return "create_task"
 
         raise ToolError(
-            "operation 파라미터는 create_event/list_events/create_task/list_tasks 또는 todo/투두 관련 별칭이어야 합니다."
+            "operation 파라미터는 create_task/list_tasks/list_projects/find_project 또는 todo/투두 관련 별칭이어야 합니다."
         )

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from ai.ai_brain import AIBrain
@@ -148,15 +150,36 @@ class GoalExecutor:
         tools_block = "\n".join(tool_lines) if tool_lines else "(등록된 도구 없음)"
 
         memory_block = self._conversation_memory.formatted(limit=10)
+        # Build latest observation JSON snapshot to help the LLM pick concrete IDs without re-asking
+        latest_event = None
+        for event in reversed(context.events):
+            if isinstance(event, StepCompletedEvent):
+                latest_event = event
+                break
+        latest_data_text = "(없음)"
+        if latest_event is not None and latest_event.data is not None:
+            try:
+                latest_data_text = json.dumps(latest_event.data, ensure_ascii=False, indent=2)
+            except TypeError:
+                latest_data_text = str(latest_event.data)
+
+        # Attach request timestamp (Asia/Seoul) to guide due_date calculations
+        now_seoul = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%dT%H:%M:%S")
         self._logger.debug("Conversation memory snapshot:\n%s", memory_block)
         reason_block = f"이전에 실패한 이유: {reason}\n" if reason else ""
         return (
             f"{self._system_prompt}\n\n"
             f"사용자 목표: {goal}\n"
+            f"요청 수신 시각(Asia/Seoul): {now_seoul}\n"
             f"사용 가능한 도구 목록:\n{tools_block}\n\n"
             f"최근 대화 기록:\n{memory_block}\n\n"
             f"현재 계획 체크리스트:\n{context.as_plan_checklist() or '(계획 없음)'}\n\n"
             f"최근 실패 로그:\n{context.fail_log_summary()}\n\n"
+            f"최근 관찰 데이터(JSON):\n{latest_data_text}\n\n"
+            "중요: 계획은 반드시 사용자 목표를 실제로 달성하는 최종 실행 단계를 포함해야 합니다.\n"
+            "- 목록 조회(list_*)만으로 끝나는 계획은 무효입니다.\n"
+            "- Notion 투두 생성 요청이라면 최종 단계에 'create_task'가 포함되어야 합니다.\n"
+            "- 단계 수는 2~3단계 이내로 간결하게 구성하세요(조회 → 선택 → 생성).\n\n"
             f"{reason_block}"
             "JSON 배열 형식의 새로운 계획을 생성하세요.\n"
             "각 항목은 {\"id\": number, \"description\": string, \"tool\": string | null, \"parameters\": object, \"status\": string} 구조여야 합니다.\n"

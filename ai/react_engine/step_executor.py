@@ -47,10 +47,13 @@ class StepExecutor:
             )
         except ToolError as exc:
             message = str(exc)
-            self._logger.warning("Step %s 실패: %s", step.id, message)
+            outcome, category = self._classify_tool_error(message)
+            log_action = "재시도" if outcome == StepOutcome.RETRY else "재계획"
+            self._logger.warning("Step %s 실패(%s 필요): %s", step.id, log_action, message)
             return StepResult(
                 step_id=step.id,
-                outcome=StepOutcome.RETRY,
+                outcome=outcome,
+                data={"error_category": category} if category else None,
                 error_reason=message,
                 attempt=attempt,
             )
@@ -227,3 +230,34 @@ class StepExecutor:
                 break
 
         return data_text, description
+
+    def _classify_tool_error(self, message: str) -> tuple[StepOutcome, str]:
+        lowered = message.lower()
+        transient_keywords = (
+            "timeout",
+            "time out",
+            "temporarily",
+            "temporary",
+            "rate limit",
+            "429",
+            "service unavailable",
+            "connection reset",
+            "network",
+            "tls",
+        )
+        for keyword in transient_keywords:
+            if keyword in lowered:
+                return StepOutcome.RETRY, "transient"
+
+        if "could not find" in lowered or "does not exist" in lowered:
+            return StepOutcome.FAILED, "missing_resource"
+        if "invalid" in lowered and "property" in lowered:
+            return StepOutcome.FAILED, "invalid_property"
+        if "not a property" in lowered:
+            return StepOutcome.FAILED, "invalid_property"
+        if "unauthorized" in lowered or "permission" in lowered or "forbidden" in lowered:
+            return StepOutcome.FAILED, "permission"
+        if "api 키" in message or "api key" in lowered:
+            return StepOutcome.FAILED, "authentication"
+
+        return StepOutcome.FAILED, "tool_error"
