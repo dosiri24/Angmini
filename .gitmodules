@@ -1,0 +1,3 @@
+[submodule "external/apple-mcp"]
+	path = external/apple-mcp
+	url = https://github.com/supermemoryai/apple-mcp.git
