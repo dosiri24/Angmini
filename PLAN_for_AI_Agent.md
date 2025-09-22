@@ -95,15 +95,32 @@
     - [x] 3.2.3: 프로젝트 ID 자동 매칭 로직과 투두 생성 시 relation 연결 지원 (LLM 프롬프트 가이드 포함)
     - [x] 3.2.4: Relation 데이터가 포함된 `list_tasks` 응답 구조 확장 및 통합 테스트 작성
 
-- [ ] **3.3: 웹 도구 구현**
-    - [ ] 3.3.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
-    - [ ] 3.3.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
-    - [ ] 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
+- ⏸️ **3.3: 웹 도구 구현 (무기한 보류)**
+    - ⏸️ 3.3.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
+    - ⏸️ 3.3.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
+    - ⏸️ 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
 
-- [ ] **3.4: Apple 시스템 도구 구현 (선택적)**
-    - [ ] 3.4.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현
-    - [ ] 3.4.2: AppleScript 또는 `py-applescript`를 이용한 시스템 제어 기능 연구 및 구현 (예: 알림 보내기)
-    - [ ] 3.4.3: `ToolManager`에 `AppleTool` 등록 (구 `ToolRegistry`)
+- [ ] **3.4: Apple 시스템 도구 구현 (Apple MCP 연동)**
+    - [ ] 3.4.1: **Apple MCP 서버 관리 모듈 구현**
+        - [ ] 3.4.1.1: `mcp/apple_mcp_manager.py`: Apple MCP 서버 시작/중지/통신 관리 클래스 구현
+        - [ ] 3.4.1.2: STDIO 프로토콜 기반 JSON-RPC 통신 구현 (`STDIOCommunicator` 클래스)
+        - [ ] 3.4.1.3: 프로세스 상태 모니터링 및 자동 복구 로직 구현 (`ProcessManager` 클래스)
+        - [ ] 3.4.1.4: Apple MCP 서버 설치 및 의존성 확인 자동화 (`AppleMCPInstaller` 클래스)
+    - [ ] 3.4.2: **Apple Tool 래퍼 구현**
+        - [ ] 3.4.2.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현 (ToolBlueprint 상속)
+        - [ ] 3.4.2.2: 7개 Apple 앱 지원 (연락처, 메모, 메시지, 메일, 캘린더, 미리알림, 지도)
+        - [ ] 3.4.2.3: macOS 권한 확인 및 안내 기능 구현
+        - [ ] 3.4.2.4: 오류 처리 및 재시도 로직 구현 (서버 연결 실패, 권한 오류 등)
+    - [ ] 3.4.3: **성능 최적화 및 안정성 강화**
+        - [ ] 3.4.3.1: 연결 풀링 구현 (`MCPConnectionPool` 클래스)
+        - [ ] 3.4.3.2: 비동기 처리 지원 (`AsyncAppleTool` 클래스)
+        - [ ] 3.4.3.3: 응답 시간 초과 처리 및 로깅 강화
+        - [ ] 3.4.3.4: 보안 검증 (입력 검증, 권한 최소화, 프로세스 격리)
+    - [ ] 3.4.4: **통합 및 검증**
+        - [ ] 3.4.4.1: `ToolManager`에 `AppleTool` 등록 및 초기화
+        - [ ] 3.4.4.2: CLI/Discord 인터페이스에서 Apple 앱 제어 테스트
+        - [ ] 3.4.4.3: 통합 테스트 작성 (`tests/test_apple_tool.py`)
+        - [ ] 3.4.4.4: 사용 가이드 문서 작성 (`docs/APPLE_TOOL_GUIDE.md`)
 
 ---
 
