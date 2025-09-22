@@ -480,6 +480,41 @@ class AppleMCPManager:
             self._communicator = None
             self._logger.info("Apple MCP server stopped")
     
+    def send_request(self, method: str, params: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
+        """
+        Apple MCP 서버에 JSON-RPC 요청을 전송합니다.
+        
+        이는 AppleTool에서 직접 사용하는 저수준 인터페이스입니다.
+        일반적인 명령은 send_command 메서드를 사용하세요.
+        
+        Args:
+            method: JSON-RPC 메서드 이름
+            params: 요청 파라미터
+            timeout: 응답 대기 시간 (초)
+            
+        Returns:
+            서버 응답 데이터
+        """
+        if not self._ensure_server_running():
+            raise ToolError("Cannot establish connection to Apple MCP server")
+        
+        if self._communicator is None:
+            raise ToolError("Apple MCP communicator is not available")
+        
+        return self._communicator.send_request(method, params, timeout)
+
+    def restart_server(self) -> bool:
+        """
+        서버를 재시작합니다.
+        
+        Returns:
+            재시작 성공 여부
+        """
+        if self._communicator is not None:
+            self.stop_server()
+        
+        return self.start_server()
+
     def send_command(self, tool_name: str, operation: str, **params) -> Dict[str, Any]:
         """
         Apple MCP 서버에 명령을 전송합니다.
@@ -565,13 +600,9 @@ class AppleMCPManager:
             return False
             
         try:
-            # 간단한 테스트 명령 (예: 연락처 목록 요청)
-            # Apple MCP의 실제 API에 맞게 조정 필요
-            test_params = {
-                "name": "contacts", 
-                "arguments": {"operation": "list", "limit": 1}
-            }
-            self._communicator.send_request("tools/call", test_params, timeout=10.0)
+            # 간단한 테스트 명령: tools/list로 사용 가능한 도구 목록 요청
+            # 이는 Apple MCP에서 가장 기본적인 요청입니다
+            self._communicator.send_request("tools/list", {}, timeout=10.0)
             return True
         except Exception as e:
             self._logger.debug(f"Server connection test failed: {e}")

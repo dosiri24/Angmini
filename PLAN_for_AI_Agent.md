@@ -101,16 +101,16 @@
     - ⏸️ 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
 
 - [ ] **3.4: Apple 시스템 도구 구현 (Apple MCP 연동)**
-    - [ ] 3.4.1: **Apple MCP 서버 관리 모듈 구현**
-        - [ ] 3.4.1.1: `mcp/apple_mcp_manager.py`: Apple MCP 서버 시작/중지/통신 관리 클래스 구현
-        - [ ] 3.4.1.2: STDIO 프로토콜 기반 JSON-RPC 통신 구현 (`STDIOCommunicator` 클래스)
-        - [ ] 3.4.1.3: 프로세스 상태 모니터링 및 자동 복구 로직 구현 (`ProcessManager` 클래스)
-        - [ ] 3.4.1.4: Apple MCP 서버 설치 및 의존성 확인 자동화 (`AppleMCPInstaller` 클래스)
-    - [ ] 3.4.2: **Apple Tool 래퍼 구현**
-        - [ ] 3.4.2.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현 (ToolBlueprint 상속)
-        - [ ] 3.4.2.2: 7개 Apple 앱 지원 (연락처, 메모, 메시지, 메일, 캘린더, 미리알림, 지도)
-        - [ ] 3.4.2.3: macOS 권한 확인 및 안내 기능 구현
-        - [ ] 3.4.2.4: 오류 처리 및 재시도 로직 구현 (서버 연결 실패, 권한 오류 등)
+    - [x] 3.4.1: **Apple MCP 서버 관리 모듈 구현**
+        - [x] 3.4.1.1: `mcp/apple_mcp_manager.py`: Apple MCP 서버 시작/중지/통신 관리 클래스 구현
+        - [x] 3.4.1.2: STDIO 프로토콜 기반 JSON-RPC 통신 구현 (`STDIOCommunicator` 클래스)
+        - [x] 3.4.1.3: 프로세스 상태 모니터링 및 자동 복구 로직 구현 (`ProcessManager` 클래스)
+        - [x] 3.4.1.4: Apple MCP 서버 설치 및 의존성 확인 자동화 (`AppleMCPInstaller` 클래스)
+    - [x] 3.4.2: **Apple Tool 래퍼 구현**
+        - [x] 3.4.2.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현 (ToolBlueprint 상속)
+        - [x] 3.4.2.2: 7개 Apple 앱 지원 (연락처, 메모, 메시지, 메일, 캘린더, 미리알림, 지도)
+        - [x] 3.4.2.3: macOS 권한 확인 및 안내 기능 구현
+        - [x] 3.4.2.4: 오류 처리 및 재시도 로직 구현 (서버 연결 실패, 권한 오류 등)
     - [ ] 3.4.3: **성능 최적화 및 안정성 강화**
         - [ ] 3.4.3.1: 연결 풀링 구현 (`MCPConnectionPool` 클래스)
         - [ ] 3.4.3.2: 비동기 처리 지원 (`AsyncAppleTool` 클래스)
