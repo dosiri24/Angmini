@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Iterable
+import platform
 
 import logging
 
@@ -24,6 +25,10 @@ def run(config: Config) -> None:
     tool_manager = create_default_tool_manager()
     logger.debug("Registered tools: %s", list(tool_manager.registered_names()))
 
+    # Apple MCP 서버 사전 시작 (macOS에서만)
+    if platform.system() == "Darwin":
+        _initialize_apple_mcp_server(logger, tool_manager)
+
     try:
         executor_factory = GoalExecutorFactory(config, tool_manager)
     except EngineError as exc:
@@ -34,6 +39,27 @@ def run(config: Config) -> None:
     print("Personal AI Assistant CLI입니다. 종료하려면 'exit'를 입력하세요.")
     _interactive_loop(_EXIT_COMMANDS, logger, executor_factory)
     print("다음에 또 만나요!")
+
+
+def _initialize_apple_mcp_server(logger: logging.Logger, tool_manager) -> None:
+    """Apple MCP 서버를 사전에 시작합니다."""
+    try:
+        # Apple 도구가 등록되어 있는지 확인
+        if "apple" in tool_manager.registered_names():
+            apple_tool = tool_manager.get("apple")
+            logger.info("🍎 Apple MCP 서버 사전 시작 중...")
+            
+            # 서버 시작 시도
+            if apple_tool._ensure_server_running():
+                logger.info("✅ Apple MCP 서버가 성공적으로 시작되었습니다")
+                print("🍎 Apple MCP 서버가 준비되었습니다!")
+            else:
+                logger.warning("⚠️ Apple MCP 서버 시작에 실패했습니다")
+                print("⚠️ Apple MCP 서버를 시작할 수 없습니다. 메모 기능이 제한될 수 있습니다.")
+                print("   설치 가이드: https://github.com/supermemoryai/apple-mcp")
+    except Exception as exc:
+        logger.error("Apple MCP 서버 초기화 중 오류: %s", exc)
+        print("⚠️ Apple MCP 초기화 중 오류가 발생했습니다. 메모 기능이 제한될 수 있습니다.")
 
 
 def _interactive_loop(

@@ -326,7 +326,14 @@ class AppleMCPInstaller:
             self._apple_mcp_path / "node_modules"
         ]
         
-        return all(path.exists() for path in required_files)
+        # 디버깅을 위한 상세 로그
+        for path in required_files:
+            exists = path.exists()
+            self._logger.debug(f"Checking {path}: {'EXISTS' if exists else 'MISSING'}")
+            if not exists:
+                return False
+        
+        return True
     
     def check_prerequisites(self) -> Dict[str, bool]:
         """
@@ -439,6 +446,11 @@ class AppleMCPManager:
             if not self._installer.is_installed():
                 self._logger.error("Apple MCP is not installed")
                 self._logger.info(self._installer.get_installation_guide())
+                return False
+            
+            # 빌드 상태 확인 및 자동 빌드
+            if not self._check_and_build():
+                self._logger.error("Apple MCP build failed")
                 return False
             
             # 필수 요구사항 확인
@@ -606,4 +618,64 @@ class AppleMCPManager:
             return True
         except Exception as e:
             self._logger.debug(f"Server connection test failed: {e}")
+            return False
+
+    def _check_and_build(self) -> bool:
+        """
+        Apple MCP가 빌드되어 있는지 확인하고, 필요하면 자동으로 빌드합니다.
+        
+        Returns:
+            빌드 성공 여부
+        """
+        try:
+            # dist 폴더가 있는지 확인
+            dist_path = self._apple_mcp_path / "dist"
+            if dist_path.exists() and any(dist_path.iterdir()):
+                self._logger.debug("Apple MCP is already built")
+                return True
+            
+            self._logger.info("Apple MCP needs to be built. Building now...")
+            
+            # bun install 실행
+            install_result = subprocess.run(
+                ["bun", "install"],
+                cwd=self._apple_mcp_path,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5분 타임아웃
+            )
+            
+            if install_result.returncode != 0:
+                self._logger.error(f"bun install failed: {install_result.stderr}")
+                return False
+            
+            # bun run build 실행
+            build_result = subprocess.run(
+                ["bun", "run", "build"],
+                cwd=self._apple_mcp_path,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5분 타임아웃
+            )
+            
+            if build_result.returncode != 0:
+                self._logger.error(f"bun run build failed: {build_result.stderr}")
+                return False
+            
+            # 빌드 완료 확인
+            if dist_path.exists() and any(dist_path.iterdir()):
+                self._logger.info("✅ Apple MCP build completed successfully")
+                return True
+            else:
+                self._logger.error("Build completed but dist folder is empty")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            self._logger.error("Apple MCP build timed out")
+            return False
+        except FileNotFoundError:
+            self._logger.error("bun is not installed. Please install bun from https://bun.sh/")
+            return False
+        except Exception as e:
+            self._logger.error(f"Failed to build Apple MCP: {e}")
             return False
