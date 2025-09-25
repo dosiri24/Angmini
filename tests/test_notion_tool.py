@@ -120,7 +120,7 @@ def test_notion_tool_accepts_string_relation(monkeypatch: pytest.MonkeyPatch) ->
     assert recorded["properties"]["경험/프로젝트"] == {"relation": [{"id": "project-789"}]}
 
 
-def test_notion_tool_requires_relations_when_relation_property_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_notion_tool_auto_links_project_when_relation_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(NotionTool.ENV_PROJECT_DATABASE, "project-db")
     client = StubNotionClient(
         query_response={
@@ -153,12 +153,62 @@ def test_notion_tool_requires_relations_when_relation_property_configured(monkey
         },
     )
 
-    with pytest.raises(ToolError) as excinfo:
-        tool(operation="create_task", title="학회 기자단 활동으로 사과 기사 쓰기")
+    result = tool(operation="create_task", title="학회 기자단 활동으로 사과 기사 쓰기")
+    payload = result.unwrap()
 
-    message = str(excinfo.value)
-    assert "relations" in message
-    assert "proj-42" in message
+    recorded = client.captured_pages[0]
+    assert recorded["properties"]["경험/프로젝트"]["relation"] == [{"id": "proj-42"}]
+    assert payload["relations"] == [{"id": "proj-42"}]
+
+
+def test_notion_tool_creates_task_without_relation_when_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(NotionTool.ENV_PROJECT_DATABASE, "project-db")
+    client = StubNotionClient(
+        query_response={
+            "results": [
+                {
+                    "id": "proj-1",
+                    "properties": {
+                        "프로젝트 이름": {
+                            "type": "title",
+                            "title": [{"plain_text": "기술 세미나", "text": {"content": "기술 세미나"}}],
+                        }
+                    },
+                },
+                {
+                    "id": "proj-2",
+                    "properties": {
+                        "프로젝트 이름": {
+                            "type": "title",
+                            "title": [{"plain_text": "여행 기록", "text": {"content": "여행 기록"}}],
+                        }
+                    },
+                },
+            ],
+            "has_more": False,
+            "next_cursor": None,
+        }
+    )
+
+    tool = NotionTool(
+        client=client,
+        default_todo_database_id="todo-db",
+        default_project_database_id="project-db",
+        task_properties={
+            "title": "작업명",
+            "relation": "경험/프로젝트",
+        },
+        project_properties={
+            "title": "프로젝트 이름",
+        },
+    )
+
+    result = tool(operation="create_task", title="사과 5개 사오기")
+    payload = result.unwrap()
+
+    recorded = client.captured_pages[0]
+    assert "경험/프로젝트" not in recorded["properties"]
+    assert "relations" not in payload
 
 
 def test_notion_tool_keeps_title_with_project_relation(monkeypatch: pytest.MonkeyPatch) -> None:

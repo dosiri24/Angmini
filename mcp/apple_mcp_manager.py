@@ -50,6 +50,7 @@ class STDIOCommunicator:
         self._response_queue: Queue[Dict[str, Any]] = Queue()
         self._pending_requests: Dict[str, Queue[Dict[str, Any]]] = {}
         self._reader_thread: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
         self._shutdown = False
         
     def start(self) -> None:
@@ -58,6 +59,7 @@ class STDIOCommunicator:
             raise ToolError("STDIOCommunicator is already running")
             
         try:
+            self._shutdown = False
             # Apple MCP 서버 프로세스 시작
             # text=True: 문자열로 입출력 처리
             # bufsize=0: 즉시 플러시하여 실시간 통신 보장
@@ -77,6 +79,11 @@ class STDIOCommunicator:
             # - 비동기적으로 여러 요청을 처리하기 위해 필요
             self._reader_thread = threading.Thread(target=self._read_responses, daemon=True)
             self._reader_thread.start()
+
+            # stderr 소비 전용 스레드 시작 (버퍼 포화로 인한 교착 방지)
+            if self._process.stderr is not None:
+                self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
+                self._stderr_thread.start()
             
             self._logger.info(f"Apple MCP server started with PID {self._process.pid}")
             
@@ -191,7 +198,25 @@ class STDIOCommunicator:
             except Exception as e:
                 self._logger.error(f"Error reading response: {e}")
                 break
-    
+
+    def _drain_stderr(self) -> None:
+        """STDERR 출력을 지속적으로 읽어 로깅하여 버퍼 포화를 방지합니다."""
+        if self._process is None or self._process.stderr is None:
+            return
+
+        while not self._shutdown:
+            try:
+                line = self._process.stderr.readline()
+                if not line:
+                    if self._process.poll() is not None:
+                        break
+                    continue
+
+                self._logger.debug(f"[Apple MCP STDERR] {line.strip()}")
+            except Exception as err:
+                self._logger.warning(f"Error reading Apple MCP stderr: {err}")
+                break
+
     def _cleanup(self) -> None:
         """프로세스와 관련 리소스를 정리합니다."""
         if self._process:
@@ -215,6 +240,12 @@ class STDIOCommunicator:
             except Exception:
                 pass
         self._pending_requests.clear()
+
+        # stderr 스레드 정리
+        self._shutdown = True
+        if self._stderr_thread and self._stderr_thread.is_alive():
+            self._stderr_thread.join(timeout=1.0)
+        self._stderr_thread = None
 
 
 class ProcessManager:
