@@ -9,7 +9,7 @@ from typing import Callable, Mapping, cast
 
 from ai.core.config import Config
 from ai.core.exceptions import ConfigError, EngineError, InterfaceError
-from ai.core.logger import get_logger, setup_logging
+from ai.core.logger import get_logger, session_log_path, setup_logging
 
 InterfaceHandler = Callable[[Config], None]
 
@@ -29,6 +29,9 @@ def main() -> None:
 
     setup_logging(config.log_level)
     logger = get_logger(__name__)
+    log_file = session_log_path()
+    if log_file:
+        logger.debug("Session log file initialised at %s", log_file)
     logger.info("Launching Personal AI Assistant (interface=%s)", config.default_interface)
     logger.debug(
         "Configuration loaded (model=%s, gemini_key_present=%s, discord_token_present=%s)",

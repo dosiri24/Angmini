@@ -112,6 +112,17 @@ class PlanningDecision:
 
 
 @dataclass(slots=True)
+class PlanningDecisionEvent(PlanEvent):
+    """Captures why the planner chose to retry, replan, or abort."""
+
+    step_id: int = 0
+    decision: str = ""
+    reason: str = ""
+    attempt: int = 0
+    error_reason: Optional[str] = None
+
+
+@dataclass(slots=True)
 class ExecutionContext:
     """Holds the mutable state of a single agent session."""
 
@@ -177,3 +188,7 @@ class ExecutionContext:
 
     def append_scratch(self, note: str) -> None:
         self.scratchpad.append(note)
+
+    def final_scratchpad_digest(self) -> str:
+        """Return a newline-joined summary of all scratch notes."""
+        return "\n".join(self.scratchpad)
