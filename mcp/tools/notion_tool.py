@@ -136,6 +136,10 @@ class NotionTool(ToolBlueprint):
         "relation": None,
     }
 
+    AUTO_PROJECT_FETCH_LIMIT = 100
+    AUTO_MATCH_MIN_SCORE = 0.72
+    AUTO_MATCH_SECONDARY_GAP = 0.08
+
     def __init__(
         self,
         client: Optional[Any] = None,
@@ -223,14 +227,15 @@ class NotionTool(ToolBlueprint):
             properties[notes_property] = {"rich_text": [{"text": {"content": notes[:2000]}}]}
         relation_property = self._task_properties.get("relation")
         project_database_hint = self._optional_str(kwargs.get("project_database_id"))
-        if relations and relation_property:
-            properties[relation_property] = {"relation": relations}
-        elif relation_property:
-            raise self._missing_relation_error(
+        if not relations and relation_property:
+            relations = self._auto_select_project_relations(
                 client,
                 task_title=title,
+                task_notes=notes,
                 project_database_id=project_database_hint,
             )
+        if relations and relation_property:
+            properties[relation_property] = {"relation": relations}
 
         override_properties = self._validate_properties(kwargs.get("properties"))
         if override_properties:
@@ -553,14 +558,26 @@ class NotionTool(ToolBlueprint):
             return todo_env
         return os.getenv(self.LEGACY_ENV_TASKS_DATABASE)
 
-    def _missing_relation_error(
+    def _auto_select_project_relations(
         self,
         client: Any,
         *,
         task_title: str,
+        task_notes: Optional[str],
         project_database_id: Optional[str],
-    ) -> ToolError:
-        database_id = None
+    ) -> Optional[list[Dict[str, str]]]:
+        """Return best matching project relation or ``None`` when no clear match exists."""
+
+        target_segments = [task_title.strip()] if task_title else []
+        if task_notes:
+            stripped_notes = task_notes.strip()
+            if stripped_notes:
+                target_segments.append(stripped_notes)
+        target_text = " ".join(seg for seg in target_segments if seg)
+        if not target_text:
+            return None
+        target_text_lower = target_text.lower()
+
         try:
             database_id = self._resolve_database_id(
                 project_database_id,
@@ -568,37 +585,77 @@ class NotionTool(ToolBlueprint):
                 self.ENV_PROJECT_DATABASE,
             )
         except ToolError:
-            pass
+            return None
 
-        candidates_summary = ""
-        if database_id:
-            try:
-                snapshot = self._list_projects(
-                    client,
-                    project_database_id=database_id,
-                    page_size=10,
-                ).unwrap()
-                items = snapshot.get("items") or []
-                formatted = []
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    title = item.get("title") or "<제목 없음>"
-                    formatted.append(f"- {title} (id={item.get('id')})")
-                if formatted:
-                    candidates_summary = "\n" + "\n".join(formatted)
-            except ToolError:
-                pass
-            except Exception:  # pragma: no cover - defensive guard
-                pass
+        try:
+            snapshot = self._list_projects(
+                client,
+                project_database_id=database_id,
+                page_size=self.AUTO_PROJECT_FETCH_LIMIT,
+            ).unwrap()
+        except ToolError:
+            return None
+        except Exception:  # pragma: no cover - defensive guard for unexpected data
+            return None
 
-        hint = "경험/프로젝트 relation을 지정해야 합니다."
-        if candidates_summary:
-            hint += "\n다음 프로젝트 후보 중에서 선택해 id를 relations 파라미터로 전달하세요:" + candidates_summary
-        else:
-            hint += " 프로젝트 데이터베이스를 통합에 공유했는지 확인하고, `relations=[...]` 형식으로 프로젝트 id를 전달하세요."
+        if not isinstance(snapshot, dict):
+            return None
+        items = snapshot.get("items")
+        if not isinstance(items, list) or not items:
+            return None
 
-        raise ToolError(hint)
+        best_candidate: Optional[Dict[str, str]] = None
+        best_score = 0.0
+        candidate_scores: list[float] = []
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("id")
+            candidate_id = raw_id.strip() if isinstance(raw_id, str) else None
+            if not candidate_id:
+                continue
+
+            candidate_title = (item.get("title") or "").strip()
+            candidate_notes = (item.get("notes") or "").strip()
+            combined = f"{candidate_title} {candidate_notes}".strip()
+            candidate_texts = [candidate_title, candidate_notes, combined]
+
+            candidate_best = 0.0
+            for text in candidate_texts:
+                normalized = text.strip()
+                if not normalized:
+                    continue
+                lowered = normalized.lower()
+                if lowered and lowered in target_text_lower:
+                    score = 1.0
+                elif target_text_lower in lowered:
+                    score = 0.95
+                else:
+                    score = SequenceMatcher(None, target_text_lower, lowered).ratio()
+                if score > candidate_best:
+                    candidate_best = score
+
+            if candidate_best == 0.0:
+                continue
+
+            candidate_scores.append(candidate_best)
+            if candidate_best > best_score:
+                best_score = candidate_best
+                best_candidate = {"id": candidate_id}
+
+        if not best_candidate:
+            return None
+
+        sorted_scores = sorted(candidate_scores, reverse=True)
+        second_best = sorted_scores[1] if len(sorted_scores) > 1 else 0.0
+
+        if best_score < self.AUTO_MATCH_MIN_SCORE:
+            return None
+        if second_best >= self.AUTO_MATCH_MIN_SCORE and (best_score - second_best) < self.AUTO_MATCH_SECONDARY_GAP:
+            return None
+
+        return [best_candidate]
 
     def _extract_title_by_name(self, properties: Dict[str, Any], property_name: Optional[str]) -> Optional[str]:
         if property_name and property_name in properties:

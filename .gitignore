@@ -31,3 +31,9 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# External dependencies
+external/apple-mcp/node_modules/
+external/apple-mcp/dist/
+external/apple-mcp/.env
+external/apple-mcp/bun.lockb

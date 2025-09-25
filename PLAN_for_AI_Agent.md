@@ -95,34 +95,54 @@
     - [x] 3.2.3: 프로젝트 ID 자동 매칭 로직과 투두 생성 시 relation 연결 지원 (LLM 프롬프트 가이드 포함)
     - [x] 3.2.4: Relation 데이터가 포함된 `list_tasks` 응답 구조 확장 및 통합 테스트 작성
 
-- [ ] **3.3: 웹 도구 구현**
-    - [ ] 3.3.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
-    - [ ] 3.3.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
-    - [ ] 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
+- ⏸️ **3.3: 웹 도구 구현 (무기한 보류)**
+    - ⏸️ 3.3.1: `mcp/tools/web_tool.py`: `WebTool` 클래스 구현
+    - ⏸️ 3.3.2: 특정 URL 내용 가져오기, 웹 검색 기능 구현
+    - ⏸️ 3.3.3: `ToolManager`에 `WebTool` 등록 (구 `ToolRegistry`)
 
-- [ ] **3.4: Apple 시스템 도구 구현 (선택적)**
-    - [ ] 3.4.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현
-    - [ ] 3.4.2: AppleScript 또는 `py-applescript`를 이용한 시스템 제어 기능 연구 및 구현 (예: 알림 보내기)
-    - [ ] 3.4.3: `ToolManager`에 `AppleTool` 등록 (구 `ToolRegistry`)
+- [ ] **3.4: Apple 시스템 도구 구현 (Apple MCP 연동)**
+    - [x] 3.4.1: **Apple MCP 서버 관리 모듈 구현**
+        - [x] 3.4.1.1: `mcp/apple_mcp_manager.py`: Apple MCP 서버 시작/중지/통신 관리 클래스 구현
+        - [x] 3.4.1.2: STDIO 프로토콜 기반 JSON-RPC 통신 구현 (`STDIOCommunicator` 클래스)
+        - [x] 3.4.1.3: 프로세스 상태 모니터링 및 자동 복구 로직 구현 (`ProcessManager` 클래스)
+        - [x] 3.4.1.4: Apple MCP 서버 설치 및 의존성 확인 자동화 (`AppleMCPInstaller` 클래스)
+    - [x] 3.4.2: **Apple Tool 래퍼 구현**
+        - [x] 3.4.2.1: `mcp/tools/apple_tool.py`: `AppleTool` 클래스 구현 (ToolBlueprint 상속)
+        - [x] 3.4.2.2: 7개 Apple 앱 지원 (연락처, 메모, 메시지, 메일, 캘린더, 미리알림, 지도)
+        - [x] 3.4.2.3: macOS 권한 확인 및 안내 기능 구현
+        - [x] 3.4.2.4: 오류 처리 및 재시도 로직 구현 (서버 연결 실패, 권한 오류 등)
+    - [x] 3.4.3: **AppleTool 운영 품질 다듬기**
+        - [x] 3.4.3.1: `AppleMCPManager`/`STDIOCommunicator` 재시작·대기 로직 점검 및 로그 정비
+        - [x] 3.4.3.2: AppleTool 타임아웃·재시도 기본값 검토와 성능 메트릭 정리
+        - [x] 3.4.3.3: AppleTool 보안 검사 규칙(금지 패턴/텍스트 길이) 검토와 테스트 추가
+        - [x] 3.4.3.4: 동기 실행 기반 장애 시나리오 점검 및 수동 부하 테스트 체크리스트 작성
+    - [x] 3.4.4: **통합 및 검증**
+        - [x] 3.4.4.1: `ToolManager` 기본 등록 확인 및 실패 시 사용자 알림 메시지 정의
+        - [x] 3.4.4.2: CLI/Discord 인터페이스에서 Apple 명령 수동 점검 시나리오 문서화
+        - [x] 3.4.4.3: AppleTool 통합 테스트 스켈레톤 정비 (macOS 권한 가이드 포함)
+        - [x] 3.4.4.4: 간단 사용 가이드/FAQ 작성 (`docs/APPLE_TOOL_GUIDE.md`)
 
 ---
 
 ## 🟣 Phase 4: 고급 기능 및 최적화 (2-3주)
 
-- [ ] **4.1: ReAct 엔진 고도화**
-    - [ ] 4.1.1: `ai/react_engine/planning_engine.py`의 동적 계획 수정(`adapt_plan`) 로직 구현
-    - [ ] 4.1.2: `ai/react_engine/loop_detector.py`의 순환 패턴 감지 등 고급 루프 감지 로직 추가
-    - [ ] 4.1.3: `ai/react_engine/agent_scratchpad.py`의 토큰 수 관리 및 요약 기능 추가
+- [ ] **4.1: ReAct 실패 흐름 강화**
+    - [ ] 4.1.1: `ai/react_engine/planning_engine.py`의 실패 판단 로직을 재구성해 재시도/재계획 이유를 더 명확히 기록
+    - ⏸️ 4.1.2: (보류) 고급 루프 감지 로직 추가
+    - ⏸️ 4.1.3: (보류) Scratchpad 토큰 관리 및 요약 기능 추가
 
-- [ ] **4.2: Memory System 구현**
-    - [ ] 4.2.1: `ai/core/database.py`: SQLite를 사용한 데이터베이스 연결 및 기본 테이블 생성 로직 구현
-    - [ ] 4.2.2: `ai/memory_system.py`: `MemorySystem` 클래스 구현
-    - [ ] 4.2.3: ReAct 세션 정보를 DB에 저장하는 기능 구현
-    - [ ] 4.2.4: `chromadb`를 사용하여 세션 정보를 벡터 임베딩으로 저장하고, 유사 목표를 검색하는 기능 구현
+- [ ] **4.2: 로깅/출력 정비**
+    - [ ] 4.2.1: `main.py` 실행 시 세션 타임스탬프(예: `YYYYMMDD_HHMMSS.log`)로 로그 파일을 분리 저장
+    - [ ] 4.2.2: CLI/콘솔 로그 포맷을 정리하고 컬러 하이라이트 적용 (성공/경고/오류 색상 구분)
+    - [ ] 4.2.3: 로그 메시지 템플릿을 간결하게 정비하고 중복 메시지를 제거
 
-- [ ] **4.3: 모니터링 및 로깅 강화**
-    - [ ] 4.3.1: `Logger`를 통해 ReAct 루프의 각 단계를 상세히 로깅
-    - [ ] 4.3.2: `AgentScratchpad`의 내용을 파일이나 DB에 저장하여 시각적으로 검토할 수 있는 기능 구현
+---
+
+## 🔶 Phase 4.5: Memory System 확장 준비 (추가 예정)
+
+- [ ] 4.5.1: 장기 메모리 스펙 정의 (저장 주기, 검색 방식, 보존 기간)
+- [ ] 4.5.2: 저장소 후보 조사 (SQLite, Vector DB 등) 및 비교 지표 수립
+- [ ] 4.5.3: 인프라 요구사항 및 보안 고려사항 문서화
 
 ---
 
