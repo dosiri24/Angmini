@@ -38,6 +38,12 @@ class TestImprovedAppleTool:
             tool._manager.send_request.return_value = {
                 "content": [{"text": "Mock response"}]
             }
+            tool._installer.is_installed = MagicMock(return_value=True)
+            tool._installer.check_prerequisites = MagicMock(return_value={
+                "bun": True,
+                "macos": True,
+                "apple_mcp_path": True,
+            })
             
             return tool
 
@@ -134,7 +140,7 @@ class TestImprovedAppleTool:
         tasks = [
             {"app": "notes", "operation": "search", "query": "test1"},
             {"app": "contacts", "operation": "search", "query": "test2"},
-            {"app": "notes", "operation": "create", "data": {"title": "test"}}
+            {"app": "notes", "operation": "create", "data": {"title": "test", "content": "body"}}
         ]
         
         results = mock_apple_tool.execute_batch(tasks)
@@ -181,18 +187,52 @@ class TestImprovedAppleTool:
         """메트릭 리셋 테스트."""
         # 먼저 몇 개의 작업 실행
         mock_apple_tool.run(app="notes", operation="search", query="test")
-        
+
         # 메트릭 확인
         metrics_before = mock_apple_tool.get_performance_metrics()
         assert metrics_before["total_requests"] > 0
-        
+
         # 리셋
         mock_apple_tool.reset_metrics()
-        
+
         # 리셋 후 확인
         metrics_after = mock_apple_tool.get_performance_metrics()
         assert metrics_after["total_requests"] == 0
         assert metrics_after["successful_requests"] == 0
+
+    def test_inspect_configuration_defaults(self, mock_apple_tool):
+        """기본 설정 요약 확인."""
+        config = mock_apple_tool.inspect_configuration()
+        assert "app_timeouts" in config
+        assert "notes" in config["app_timeouts"]
+        assert config["max_retries"] == 2
+        assert config["max_text_length"] == 10000
+        assert any("shell" in pattern for pattern in config["dangerous_patterns"])
+
+    def test_custom_initial_configuration(self, tmp_path):
+        """초기화 시 커스텀 설정 적용 여부 확인."""
+        external_dir = tmp_path / "external" / "apple-mcp"
+        external_dir.mkdir(parents=True)
+        import json
+        with open(external_dir / "package.json", "w") as f:
+            json.dump({"name": "apple-mcp", "scripts": {"start": "node index.js"}}, f)
+
+        with patch('platform.system', return_value='Darwin'):
+            tool = AppleTool(
+                project_root=tmp_path,
+                app_timeouts={"notes": 12.0},
+                operation_timeouts={"notes.search": 22.0},
+                security_patterns=["custom"],
+                max_text_length=5000,
+                max_retries=5,
+            )
+
+        config = tool.inspect_configuration()
+        assert config["app_timeouts"]["notes"] == 12.0
+        assert config["operation_timeouts"]["notes.search"] == 22.0
+        assert config["max_text_length"] == 5000
+        assert "custom" in config["dangerous_patterns"]
+        assert config["max_retries"] == 5
 
     def test_performance_metrics_dataclass(self):
         """PerformanceMetrics 데이터클래스 테스트."""

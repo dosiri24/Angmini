@@ -52,12 +52,25 @@ class STDIOCommunicator:
         self._reader_thread: Optional[threading.Thread] = None
         self._stderr_thread: Optional[threading.Thread] = None
         self._shutdown = False
+
+    @property
+    def command(self) -> List[str]:
+        """현재 서버 실행 명령을 반환합니다."""
+        return list(self._command)
+
+    @property
+    def working_dir(self) -> Optional[Path]:
+        """현재 작업 디렉터리를 반환합니다."""
+        return self._working_dir
         
     def start(self) -> None:
-        """서버 프로세스를 시작하고 통신 스레드를 초기화합니다."""
+        """서버 프로세스를 시작하고 통신 스레드를 초기화합니다.
+
+        추가 로깅을 통해 실제 명령과 작업 디렉터리를 명확히 남기도록 개선했습니다.
+        """
         if self._process is not None:
             raise ToolError("STDIOCommunicator is already running")
-            
+
         try:
             self._shutdown = False
             # Apple MCP 서버 프로세스 시작
@@ -85,15 +98,21 @@ class STDIOCommunicator:
                 self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
                 self._stderr_thread.start()
             
-            self._logger.info(f"Apple MCP server started with PID {self._process.pid}")
-            
+            self._logger.info(
+                "Apple MCP server started (pid=%s, cmd=%s, cwd=%s)",
+                self._process.pid,
+                " ".join(self._command),
+                self._working_dir,
+            )
+
         except Exception as e:
             self._cleanup()
             raise ToolError(f"Failed to start Apple MCP server: {e}") from e
-    
+
     def stop(self) -> None:
         """서버 프로세스를 중지하고 리소스를 정리합니다."""
         self._shutdown = True
+        self._logger.debug("Stopping Apple MCP STDIO communicator")
         self._cleanup()
     
     def send_request(self, method: str, params: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
@@ -231,6 +250,7 @@ class STDIOCommunicator:
             except Exception as e:
                 self._logger.error(f"Error during process cleanup: {e}")
             finally:
+                self._logger.debug("Apple MCP process resources released")
                 self._process = None
         
         # 대기 중인 요청들에 오류 응답 전송
@@ -269,11 +289,12 @@ class ProcessManager:
         self._restart_delay = restart_delay
         self._restart_count = 0
         self._last_restart_time = 0.0
-        
+        self._last_restart_error: Optional[str] = None
+
     def can_restart(self) -> bool:
         """재시작이 가능한지 확인합니다."""
         return self._restart_count < self._max_restarts
-    
+
     def should_restart(self, communicator: STDIOCommunicator) -> bool:
         """
         서버 재시작이 필요한지 판단합니다.
@@ -287,47 +308,76 @@ class ProcessManager:
             return self.can_restart()
         return False
     
-    def restart_server(self, communicator: STDIOCommunicator, 
-                      command: List[str], working_dir: Optional[Path] = None) -> bool:
+    def restart_server(
+        self,
+        communicator: STDIOCommunicator,
+        command: List[str],
+        working_dir: Optional[Path] = None,
+    ) -> bool:
         """
         서버를 재시작합니다.
-        
+
         Returns:
             재시작 성공 여부
         """
         if not self.can_restart():
-            self._logger.error(f"Maximum restart attempts ({self._max_restarts}) reached")
+            self._last_restart_error = "maximum_restart_attempts"
+            self._logger.error(
+                "Maximum restart attempts (%s) reached; skipping restart.",
+                self._max_restarts,
+            )
             return False
-        
+
         current_time = time.time()
-        
+
         # 너무 빠른 연속 재시작 방지
         if current_time - self._last_restart_time < self._restart_delay:
-            time.sleep(self._restart_delay)
-        
+            wait_time = self._restart_delay - (current_time - self._last_restart_time)
+            if wait_time > 0:
+                self._logger.debug("Waiting %.2fs before restarting Apple MCP server", wait_time)
+                time.sleep(wait_time)
+
         try:
-            self._logger.info(f"Restarting Apple MCP server (attempt {self._restart_count + 1}/{self._max_restarts})")
-            
+            attempt = self._restart_count + 1
+            self._logger.info(
+                "Restarting Apple MCP server (attempt %s/%s)",
+                attempt,
+                self._max_restarts,
+            )
+
             # 기존 프로세스 정리
             communicator.stop()
-            
+
             # 새 프로세스 시작
             communicator.__init__(command, working_dir)  # 재초기화
             communicator.start()
-            
+
             self._restart_count += 1
             self._last_restart_time = current_time
-            
+            self._last_restart_error = None
+
             self._logger.info("Apple MCP server restarted successfully")
             return True
-            
+
         except Exception as e:
-            self._logger.error(f"Failed to restart Apple MCP server: {e}")
+            self._last_restart_error = str(e)
+            self._logger.error("Failed to restart Apple MCP server: %s", e)
             return False
-    
+
     def reset_restart_count(self) -> None:
         """재시작 카운터를 리셋합니다. (성공적인 동작 후 호출)"""
         self._restart_count = 0
+        self._last_restart_error = None
+
+    def diagnostics(self) -> Dict[str, Any]:
+        """현재 재시작 상태와 최근 오류 정보를 반환합니다."""
+        return {
+            "max_restarts": self._max_restarts,
+            "restart_delay": self._restart_delay,
+            "restart_count": self._restart_count,
+            "last_restart_time": self._last_restart_time,
+            "last_restart_error": self._last_restart_error,
+        }
 
 
 class AppleMCPInstaller:
@@ -607,8 +657,27 @@ class AppleMCPManager:
             "server_running": self.is_server_running(),
             "installed": self._installer.is_installed(),
             "prerequisites": self._installer.check_prerequisites(),
-            "restart_count": self._process_manager._restart_count,
-            "can_restart": self._process_manager.can_restart()
+            "restart": self._process_manager.diagnostics(),
+            "can_restart": self._process_manager.can_restart(),
+        }
+
+    def get_runtime_diagnostics(self) -> Dict[str, Any]:
+        """Apple MCP 관련 종합 진단 정보를 제공합니다."""
+        communicator_state = None
+        if self._communicator:
+            communicator_state = {
+                "running": self._communicator.is_running(),
+                "command": " ".join(self._communicator.command),
+                "working_dir": str(self._communicator.working_dir) if self._communicator.working_dir else None,
+            }
+
+        return {
+            "installer": {
+                "installed": self._installer.is_installed(),
+                "prerequisites": self._installer.check_prerequisites(),
+            },
+            "process_manager": self._process_manager.diagnostics(),
+            "communicator": communicator_state,
         }
     
     def _ensure_server_running(self) -> bool:

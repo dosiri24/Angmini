@@ -38,6 +38,25 @@ class PerformanceMetrics:
             return 0.0
         return self.total_duration / self.successful_requests
 
+    def as_dict(self) -> Dict[str, float]:
+        """외부 보고용 요약."""
+        return {
+            "total_requests": float(self.total_requests),
+            "successful_requests": float(self.successful_requests),
+            "failed_requests": float(self.failed_requests),
+            "retry_count": float(self.retry_count),
+            "success_rate": self.success_rate(),
+            "average_duration": self.average_duration(),
+        }
+
+    def reset(self) -> None:
+        """누적 메트릭 초기화."""
+        self.total_requests = 0
+        self.successful_requests = 0
+        self.failed_requests = 0
+        self.total_duration = 0.0
+        self.retry_count = 0
+
 
 class AppleTool(ToolBlueprint):
     """
@@ -177,7 +196,36 @@ class AppleTool(ToolBlueprint):
         },
     }
 
-    def __init__(self, project_root: Optional[Path] = None):
+    DEFAULT_APP_TIMEOUTS: Dict[str, float] = {
+        "contacts": 8.0,
+        "notes": 6.0,
+        "messages": 15.0,
+        "mail": 20.0,
+        "calendar": 10.0,
+        "reminders": 8.0,
+        "maps": 25.0,
+    }
+
+    DEFAULT_OPERATION_TIMEOUTS: Dict[str, float] = {
+        "notes.list": 8.0,
+        "notes.search": 15.0,
+        "notes.create": 3.0,
+        "messages.send": 15.0,
+        "messages.schedule": 20.0,
+        "mail.search": 20.0,
+        "maps.directions": 30.0,
+    }
+
+    def __init__(
+        self,
+        project_root: Optional[Path] = None,
+        *,
+        app_timeouts: Optional[Dict[str, float]] = None,
+        operation_timeouts: Optional[Dict[str, float]] = None,
+        security_patterns: Optional[List[str]] = None,
+        max_text_length: Optional[int] = None,
+        max_retries: Optional[int] = None,
+    ):
         """
         Args:
             project_root: Angmini 프로젝트 루트 경로 (자동 감지 가능)
@@ -205,7 +253,7 @@ class AppleTool(ToolBlueprint):
         self._metrics = PerformanceMetrics()
         
         # 보안 설정
-        self._dangerous_patterns = [
+        self._dangerous_patterns = security_patterns or [
             r"do\s+shell\s+script",
             r"tell\s+application\s+\"system",
             r"osascript\s+-e",
@@ -213,34 +261,22 @@ class AppleTool(ToolBlueprint):
             r"\/bin\/",
             r"sudo\s+",
             r"rm\s+-rf",
-            r"killall\s+"
+            r"killall\s+",
         ]
-        self._max_text_length = 10000
-        
+        self._max_text_length = max_text_length or 10000
+
         # 앱별 타임아웃 설정 (초)
-        self._app_timeouts = {
-            "contacts": 8.0,
-            "notes": 6.0,
-            "messages": 15.0,
-            "mail": 20.0,
-            "calendar": 10.0,
-            "reminders": 8.0,
-            "maps": 25.0,
-        }
-        
+        self._app_timeouts = dict(self.DEFAULT_APP_TIMEOUTS)
+        if app_timeouts:
+            self._app_timeouts.update(app_timeouts)
+
         # 연산별 특별 타임아웃 (실제 성능 측정 기반)
-        self._operation_timeouts = {
-            "notes.list": 8.0,
-            "notes.search": 15.0,
-            "notes.create": 3.0,
-            "messages.send": 15.0,
-            "messages.schedule": 20.0,
-            "mail.search": 20.0,
-            "maps.directions": 30.0,
-        }
-        
+        self._operation_timeouts = dict(self.DEFAULT_OPERATION_TIMEOUTS)
+        if operation_timeouts:
+            self._operation_timeouts.update(operation_timeouts)
+
         # 최대 재시도 횟수
-        self._max_retries = 2
+        self._max_retries = max_retries if max_retries is not None else 2
         
         # 지원하는 앱별 연산 매핑 (실제 Apple MCP 스키마 기반)
         self._app_operations = {
@@ -263,6 +299,10 @@ class AppleTool(ToolBlueprint):
             if security_violations:
                 self._metrics.failed_requests += 1
                 self._metrics.total_requests += 1
+                self._logger.warning(
+                    "Blocked Apple tool request due to security rules: %s",
+                    security_violations,
+                )
                 return ToolResult(
                     success=False,
                     error=f"보안 검증 실패: {'; '.join(security_violations)}"
@@ -326,6 +366,16 @@ class AppleTool(ToolBlueprint):
             self._logger.error(f"Apple tool execution failed: {exc}")
             raise ToolError(f"Apple 앱 작업 중 오류가 발생했습니다: {exc}") from exc
 
+    def inspect_configuration(self) -> Dict[str, Any]:
+        """현재 AppleTool 동작 파라미터를 확인합니다."""
+        return {
+            "app_timeouts": dict(self._app_timeouts),
+            "operation_timeouts": dict(self._operation_timeouts),
+            "max_retries": self._max_retries,
+            "max_text_length": self._max_text_length,
+            "dangerous_patterns": list(self._dangerous_patterns),
+        }
+
     def _is_macos(self) -> bool:
         """macOS 환경인지 확인합니다."""
         return platform.system() == "Darwin"
@@ -342,21 +392,22 @@ class AppleTool(ToolBlueprint):
             if not self._installer.is_installed():
                 self._logger.error("Apple MCP is not installed")
                 return False
-            
+
             if self._manager.is_server_running():
                 self._logger.debug("Apple MCP server is already running")
                 return True
             
             self._logger.info("Starting Apple MCP server...")
             success = self._manager.start_server()
-            
+
             if success:
                 self._logger.info("Apple MCP server started successfully")
             else:
-                self._logger.error("Failed to start Apple MCP server")
-                
+                diagnostics = self._manager.get_runtime_diagnostics()
+                self._logger.error("Failed to start Apple MCP server (diagnostics=%s)", diagnostics)
+
             return success
-            
+
         except Exception as exc:
             self._logger.error(f"Error checking/starting Apple MCP server: {exc}")
             return False
@@ -1056,22 +1107,15 @@ class AppleTool(ToolBlueprint):
     def get_performance_metrics(self) -> Dict[str, Any]:
         """
         현재까지의 성능 메트릭을 반환합니다.
-        
+
         Returns:
             성능 메트릭 딕셔너리
         """
-        return {
-            "total_requests": self._metrics.total_requests,
-            "successful_requests": self._metrics.successful_requests,
-            "failed_requests": self._metrics.failed_requests,
-            "success_rate": self._metrics.success_rate(),
-            "average_duration": self._metrics.average_duration(),
-            "retry_count": self._metrics.retry_count,
-        }
+        return self._metrics.as_dict()
 
     def reset_metrics(self) -> None:
         """성능 메트릭을 초기화합니다."""
-        self._metrics = PerformanceMetrics()
+        self._metrics.reset()
         self._logger.info("Performance metrics reset")
 
     def execute_batch(self, tasks: List[Dict[str, Any]]) -> List[ToolResult]:
