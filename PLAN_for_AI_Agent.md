@@ -140,31 +140,31 @@
 
 ## 🔶 Phase 4.5: Adaptive Memory Layer (2-3주)
 
-- [ ] **4.5.1: Memory Record 설계 및 추출 시점 정의**
-    - [ ] 4.5.1.1: 단일 Memory Record 스키마 정의 (요약 본문, 사용 도구, 사용자 의도, 성과 태그 등)
-    - [ ] 4.5.1.2: ExecutionContext 종료 직전 수집할 데이터 목록 확정 (사용자 입력, 계획, 도구 호출, 최종 응답 초안)
-    - [ ] 4.5.1.3: 저장 대상 선별 기준 정의 (신규 시나리오, 오류 해결, 사용자 선호 등)
+- [x] **4.5.1: Memory Record 설계 및 추출 시점 정의**
+    - [x] 4.5.1.1: 단일 Memory Record 스키마 정의 (요약 본문, 사용 도구, 사용자 의도, 성과 태그 등)
+    - [x] 4.5.1.2: ExecutionContext 종료 직전 수집할 데이터 목록 확정 (사용자 입력, 계획, 도구 호출, 최종 응답 초안)
+    - [x] 4.5.1.3: 저장 대상 선별 기준 정의 (신규 시나리오, 오류 해결, 사용자 선호 등)
 
-- [ ] **4.5.2: Memory Curator 모듈 구현**
-    - [ ] 4.5.2.1: Curator LLM 프롬프트 설계 (핵심만 정리하는 요약 가이드)
-    - [ ] 4.5.2.2: ExecutionContext → Curator 모듈 파이프라인 구축 (최종 응답 전 동기 실행)
-    - [ ] 4.5.2.3: 중복 메모리 감지/병합 규칙 정의 및 1차 구현
+- [x] **4.5.2: Memory Curator 모듈 구현**
+    - [x] 4.5.2.1: Curator LLM 프롬프트 설계 (핵심만 정리하는 요약 가이드)
+    - [x] 4.5.2.2: ExecutionContext → Curator 모듈 파이프라인 구축 (최종 응답 전 동기 실행)
+    - [x] 4.5.2.3: 중복 메모리 감지/병합 규칙 정의 및 1차 구현
 
-- [ ] **4.5.3: Qwen3-Embedding 기반 저장소 구성**
-    - [ ] 4.5.3.1: Qwen3-Embedding 0.6 호출 래퍼 구현 및 API 키 관리 규칙 수립
-    - [ ] 4.5.3.2: 메타데이터 저장(예: SQLite)과 벡터 인덱스(예: 로컬 FAISS) 병행 설계
-    - [ ] 4.5.3.3: 삽입·검색 공통 인터페이스 정의 (확장 가능하도록 추상화)
+- [x] **4.5.3: Qwen3-Embedding 기반 저장소 구성**
+    - [x] 4.5.3.1: Qwen3-Embedding 0.6 호출 래퍼 구현 및 API 키 관리 규칙 수립
+    - [x] 4.5.3.2: 메타데이터 저장(예: SQLite)과 벡터 인덱스(예: 로컬 FAISS) 병행 설계
+    - [x] 4.5.3.3: 삽입·검색 공통 인터페이스 정의 (확장 가능하도록 추상화)
 
-- [ ] **4.5.4: Memory MCP 도구 구현**
-    - [ ] 4.5.4.1: `mcp/tools/memory_tool.py`에서 `MemoryTool` 구현 (ToolBlueprint 상속)
-    - [ ] 4.5.4.2: 검색 엔드포인트 정의 (`search_experience`, `find_solution`, `get_tool_guidance`, `analyze_patterns`)
-    - [ ] 4.5.4.3: 쿼리 타입별 검색 우선순위 로직 (임베딩 유사도 + 메타 필터)
-    - [ ] 4.5.4.4: System Prompt에 MemoryTool 우선 사용 지침 추가 (ToolManager 구조 변경 없이)
+- [x] **4.5.4: Memory MCP 도구 구현**
+    - [x] 4.5.4.1: `mcp/tools/memory_tool.py`에서 `MemoryTool` 구현 (ToolBlueprint 상속)
+    - [x] 4.5.4.2: 검색 엔드포인트 정의 (`search_experience`, `find_solution`, `get_tool_guidance`, `analyze_patterns`)
+    - [x] 4.5.4.3: 쿼리 타입별 검색 우선순위 로직 (임베딩 유사도 + 메타 필터)
+    - [x] 4.5.4.4: System Prompt에 MemoryTool 우선 사용 지침 추가 (ToolManager 구조 변경 없이)
 
-- [ ] **4.5.5: ReAct Engine 통합**
-    - [ ] 4.5.5.1: `GoalExecutor`에 최종 메모리 생성 단계 연결 (최종 응답 전 Curator 호출)
-    - [ ] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
-    - [ ] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
+- [x] **4.5.5: ReAct Engine 통합**
+    - [x] 4.5.5.1: `GoalExecutor`에 최종 메모리 생성 단계 연결 (최종 응답 전 Curator 호출)
+    - [x] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
+    - [x] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
 
 - [ ] **4.5.6: 관찰 및 유지보수 체계**
     - [ ] 4.5.6.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의

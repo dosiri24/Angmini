@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Any, Dict, Iterable, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional
 
 from ai.ai_brain import AIBrain
 from ai.core.exceptions import EngineError
@@ -31,6 +31,9 @@ from .planning_engine import PlanningEngine
 from .safety_guard import SafetyGuard
 from .step_executor import StepExecutor
 
+if TYPE_CHECKING:
+    from ai.memory.service import MemoryService
+
 
 class GoalExecutor:
     """High-level orchestrator for planning and executing a user goal."""
@@ -47,6 +50,7 @@ class GoalExecutor:
         planning_engine: PlanningEngine | None = None,
         template_dir: Optional[Path] = None,
         conversation_memory: ConversationMemory | None = None,
+        memory_service: "MemoryService | None" = None,
     ) -> None:
         self._brain = brain
         self._tool_manager = tool_manager
@@ -57,6 +61,7 @@ class GoalExecutor:
         self._planning_engine = planning_engine or PlanningEngine(safety_guard)
         self._logger = get_logger(self.__class__.__name__)
         self._conversation_memory = conversation_memory or ConversationMemory()
+        self._memory_service = memory_service
 
         base_dir = template_dir or Path(__file__).resolve().parent / "prompt_templates"
         self._system_prompt = (base_dir / "system_prompt.md").read_text(encoding="utf-8")
@@ -89,6 +94,8 @@ class GoalExecutor:
             final_message = self._step_executor.compose_final_message(context)
         if final_message:
             context.metadata["final_message"] = final_message
+
+        self._capture_memory(context, goal)
 
         return context
 
@@ -150,6 +157,11 @@ class GoalExecutor:
         tools_block = "\n".join(tool_lines) if tool_lines else "(등록된 도구 없음)"
 
         memory_block = self._conversation_memory.formatted(limit=10)
+        memory_notes_list = context.metadata.get("memory_search_notes")
+        if isinstance(memory_notes_list, list) and memory_notes_list:
+            memory_insights = "\n".join(str(note) for note in memory_notes_list[-3:])
+        else:
+            memory_insights = "(최근 메모리 검색 없음)"
         # Build latest observation JSON snapshot to help the LLM pick concrete IDs without re-asking
         latest_event = None
         for event in reversed(context.events):
@@ -173,6 +185,7 @@ class GoalExecutor:
             f"요청 수신 시각(Asia/Seoul): {now_seoul}\n"
             f"사용 가능한 도구 목록:\n{tools_block}\n\n"
             f"최근 대화 기록:\n{memory_block}\n\n"
+            f"최근 메모리 검색 요약:\n{memory_insights}\n\n"
             f"현재 계획 체크리스트:\n{context.as_plan_checklist() or '(계획 없음)'}\n\n"
             f"최근 실패 로그:\n{context.fail_log_summary()}\n\n"
             f"최근 관찰 데이터(JSON):\n{latest_data_text}\n\n"
@@ -273,6 +286,7 @@ class GoalExecutor:
                 StepCompletedEvent(step_id=step.id, outcome=result.outcome, data=result.data)
             )
             context.append_scratch(f"step #{step.id} 완료")
+            self._handle_memory_tool_success(context, step, result)
             return
 
         failure_entry = FailureLogEntry(
@@ -315,6 +329,71 @@ class GoalExecutor:
                     if isinstance(message, str) and message.strip():
                         return message.strip()
         return None
+
+    def _handle_memory_tool_success(
+        self,
+        context: ExecutionContext,
+        step: PlanStep,
+        result: StepResult,
+    ) -> None:
+        if step.tool_name != "memory":
+            return
+        data = result.data
+        if not isinstance(data, dict):
+            return
+        summary = self._summarise_memory_search(data)
+        if summary:
+            context.append_scratch(f"memory search insight: {summary}")
+            notes_obj = context.metadata.setdefault("memory_search_notes", [])
+            if not isinstance(notes_obj, list):
+                notes_obj = []
+                context.metadata["memory_search_notes"] = notes_obj
+            notes_obj.append(summary)
+        history_obj = context.metadata.setdefault("memory_search_results", [])
+        if not isinstance(history_obj, list):
+            history_obj = []
+            context.metadata["memory_search_results"] = history_obj
+        history_obj.append(data)
+
+    def _summarise_memory_search(self, data: Dict[str, Any]) -> str:
+        matches = data.get("matches")
+        if isinstance(matches, list) and matches:
+            first = matches[0]
+            if isinstance(first, dict):
+                summary = first.get("summary")
+                score = first.get("score")
+                if isinstance(summary, str) and summary.strip():
+                    if isinstance(score, (int, float)):
+                        return f"top match '{summary.strip()}' (score={score:.2f})"
+                    return f"top match '{summary.strip()}'"
+        if any(key in data for key in ("tool_usage", "tags")):
+            return "usage patterns analysed"
+        return ""
+
+    def _capture_memory(self, context: ExecutionContext, user_request: str) -> None:
+        if not self._memory_service:
+            return
+
+        try:
+            capture = self._memory_service.capture(context, user_request)
+            capture_info: Dict[str, Any] = {
+                "should_store": capture.should_store,
+                "reason": capture.reason,
+                "stored": capture.stored,
+            }
+            if capture.duplicate_id:
+                capture_info["duplicate_of"] = capture.duplicate_id
+            if capture.record_id:
+                capture_info["record_id"] = capture.record_id
+            if capture.category:
+                capture_info["category"] = capture.category
+            if capture.stored and capture.record:
+                context.append_scratch(f"memory stored: {capture.record.summary}")
+            context.metadata["memory_capture"] = capture_info
+        except EngineError as exc:
+            self._logger.warning("Memory capture failed: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive guard
+            self._logger.warning("Unexpected memory capture failure: %s", exc, exc_info=True)
 
     # Future: integrate thinking loop with react prompt
     def render_react_prompt(self, context: ExecutionContext) -> str:
