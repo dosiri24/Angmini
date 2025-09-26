@@ -13,6 +13,9 @@ from ai.core.logger import get_logger
 from .memory_records import MemoryCategory, MemoryRecord, MemorySourceData
 
 
+CURATOR_MAX_OUTPUT_TOKENS = 4096
+
+
 class MemoryCurator:
     """Use an LLM to summarise agent activity into a structured memory record."""
 
@@ -24,7 +27,11 @@ class MemoryCurator:
     def curate(self, source: MemorySourceData) -> MemoryRecord:
         prompt = self._render_prompt(source)
         self._logger.debug("Invoking memory curator prompt")
-        response = self._brain.generate_text(prompt, temperature=0.2, max_output_tokens=512)
+        response = self._brain.generate_text(
+            prompt,
+            temperature=0.2,
+            max_output_tokens=CURATOR_MAX_OUTPUT_TOKENS,
+        )
         payload = self._parse_response(response)
         return self._build_record(payload, source)
 
