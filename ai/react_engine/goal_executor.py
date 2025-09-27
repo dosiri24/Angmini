@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from ai.ai_brain import AIBrain
 from ai.core.exceptions import EngineError
@@ -32,6 +33,7 @@ from .safety_guard import SafetyGuard
 from .step_executor import StepExecutor
 
 if TYPE_CHECKING:
+    from ai.memory.memory_records import MemoryRecord
     from ai.memory.service import MemoryService
 
 
@@ -71,6 +73,7 @@ class GoalExecutor:
         context = ExecutionContext(goal=goal)
         self._scratchpad.clear()
         self._scratchpad.add(f"goal established: {goal}")
+        self._prefetch_relevant_memories(context, goal)
         self._update_plan(context, reason="initial plan required")
 
         while context.remaining_steps():
@@ -358,17 +361,119 @@ class GoalExecutor:
     def _summarise_memory_search(self, data: Dict[str, Any]) -> str:
         matches = data.get("matches")
         if isinstance(matches, list) and matches:
-            first = matches[0]
-            if isinstance(first, dict):
-                summary = first.get("summary")
-                score = first.get("score")
-                if isinstance(summary, str) and summary.strip():
-                    if isinstance(score, (int, float)):
-                        return f"top match '{summary.strip()}' (score={score:.2f})"
-                    return f"top match '{summary.strip()}'"
+            highlights: List[str] = []
+            for entry in matches[:3]:
+                if not isinstance(entry, dict):
+                    continue
+                summary = entry.get("summary")
+                score = entry.get("score")
+                if not isinstance(summary, str) or not summary.strip():
+                    continue
+                lowered = summary.lower()
+                is_positive = (
+                    any(keyword in lowered for keyword in ("좋아", "선호", "기억", "like", "prefer"))
+                    and "기억하지" not in lowered
+                    and "모르" not in lowered
+                    and "알지 못" not in lowered
+                )
+                label = "preference" if is_positive else "memory"
+                if isinstance(score, (int, float)):
+                    highlights.append(f"{label}: {summary.strip()} (score={score:.2f})")
+                else:
+                    highlights.append(f"{label}: {summary.strip()}")
+            if highlights:
+                return " | ".join(highlights)
         if any(key in data for key in ("tool_usage", "tags")):
             return "usage patterns analysed"
         return ""
+
+    def _prefetch_relevant_memories(self, context: ExecutionContext, user_request: str) -> None:
+        if not self._memory_service:
+            return
+
+        repository = getattr(self._memory_service, "repository", None)
+        if repository is None:
+            return
+
+        # Allow duplicated OpenMP runtimes (macOS often loads both PyTorch and FAISS).
+        os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+        try:
+            matches = repository.search(user_request, top_k=3)
+        except Exception as exc:  # pragma: no cover - runtime safeguard
+            self._logger.warning("Memory prefetch failed: %s", exc)
+            return
+
+        if not matches:
+            return
+
+        reranked_matches = self._rerank_memory_matches(matches)
+
+        serialised_matches: List[Dict[str, Any]] = []
+        for record, score in reranked_matches:
+            payload: Dict[str, Any] = {
+                "summary": record.summary,
+                "goal": record.goal,
+                "user_intent": record.user_intent,
+                "outcome": record.outcome,
+                "category": record.category.value,
+                "tools_used": list(record.tools_used),
+                "tags": list(record.tags),
+                "score": float(score),
+                "created_at": record.created_at.isoformat()
+                if hasattr(record.created_at, "isoformat")
+                else record.created_at,
+            }
+            serialised_matches.append(payload)
+
+        data: Dict[str, Any] = {"matches": serialised_matches}
+        summary = self._summarise_memory_search(data)
+        if summary:
+            context.append_scratch(f"memory search insight: {summary}")
+            notes_obj = context.metadata.setdefault("memory_search_notes", [])
+            if isinstance(notes_obj, list):
+                notes_obj.append(summary)
+            else:
+                context.metadata["memory_search_notes"] = [summary]
+
+        history_obj = context.metadata.setdefault("memory_search_results", [])
+        if isinstance(history_obj, list):
+            history_obj.append(data)
+        else:
+            context.metadata["memory_search_results"] = [data]
+
+    def _rerank_memory_matches(
+        self,
+        matches: Sequence[Tuple["MemoryRecord", float]],
+    ) -> List[Tuple["MemoryRecord", float]]:
+        def preference_bias(record: "MemoryRecord") -> float:
+            text = " ".join(
+                filter(
+                    None,
+                    [record.summary, record.user_intent, record.outcome],
+                )
+            ).lower()
+            tags = {tag.lower() for tag in record.tags}
+            bias = 0.0
+
+            if any(keyword in text for keyword in ("좋아", "선호", "favorite", "prefer")):
+                bias += 0.45
+            if "기억" in text and "기억하지" not in text:
+                bias += 0.25
+            if any(tag in tags for tag in ("선호 표현", "선호도", "공감", "기억")):
+                bias += 0.35
+            if any(tag in tags for tag in ("ai 한계", "정보 부족")):
+                bias -= 0.4
+            if "기억하지" in text or "모르" in text or "알지 못" in text:
+                bias -= 0.5
+            return bias
+
+        scored: List[Tuple["MemoryRecord", float]] = []
+        for record, base_score in matches:
+            scored.append((record, base_score + preference_bias(record)))
+
+        scored.sort(key=lambda item: item[1], reverse=True)
+        return scored
 
     def _capture_memory(self, context: ExecutionContext, user_request: str) -> None:
         if not self._memory_service:

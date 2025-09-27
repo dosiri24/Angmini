@@ -9,6 +9,9 @@ from typing import Optional
 from ai.core.exceptions import EngineError
 from ai.core.logger import get_logger
 
+# Allow duplicated OpenMP runtimes (PyTorch/FAISS on macOS can each bundle libomp).
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 from .embedding import QwenEmbeddingModel
 from .storage import FaissVectorIndex, MemoryRepository, SqliteMemoryStore
 

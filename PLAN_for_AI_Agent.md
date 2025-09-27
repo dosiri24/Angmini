@@ -140,6 +140,14 @@
 
 ## 🔶 Phase 4.5: Adaptive Memory Layer (2-3주)
 
+### 🧱 현재 메모리 서브시스템 구조 참고
+- `ai/memory/service.py`: MemoryService가 ExecutionContext 종료 시 파이프라인(`pipeline.py`, `retention_policy.py`, `memory_curator.py`)을 호출해 장기 기억을 저장.
+- `ai/memory/factory.py`: SQLite + FAISS + Qwen 임베딩을 묶어 `MemoryRepository`(`storage/repository.py`)를 생성하고, 현재 OpenMP 환경 변수도 설정.
+- `ai/memory/storage/repository.py`: `search()`가 임베딩 유사도 기반 상위 결과를 반환하며, `MemoryRecord`는 `memory_records.py`에 정의.
+- `mcp/tools/memory_tool.py`: MCP 인터페이스에서 MemoryRepository 검색 API를 노출하며 `search_experience` 등 엔드포인트를 제공.
+- `ai/react_engine/goal_executor.py`: 세션 시작 시 `_prefetch_relevant_memories()`가 MemoryService.repository를 직접 호출해 상위 기억을 가져와 ReAct 컨텍스트에 주입.
+- `ai/memory/prompts/` 폴더: curator 프롬프트가 정리돼 있으며, LLM 기반 보조 프롬프트를 추가하기 좋은 위치.
+
 - [x] **4.5.1: Memory Record 설계 및 추출 시점 정의**
     - [x] 4.5.1.1: 단일 Memory Record 스키마 정의 (요약 본문, 사용 도구, 사용자 의도, 성과 태그 등)
     - [x] 4.5.1.2: ExecutionContext 종료 직전 수집할 데이터 목록 확정 (사용자 입력, 계획, 도구 호출, 최종 응답 초안)
@@ -166,10 +174,17 @@
     - [x] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
     - [x] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
 
-- [ ] **4.5.6: 관찰 및 유지보수 체계**
-    - [ ] 4.5.6.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의
-    - [ ] 4.5.6.2: 임베딩 갱신/모델 교체 시나리오 문서화
-    - [ ] 4.5.6.3: 데이터 정리 및 개인정보 관리 정책 수립
+- [ ] **4.5.6: Cascaded LLM-Filter Retrieval 실험**
+    - [ ] 4.5.6.1: `ai/memory/prompts/`에 LLM 필터링 프롬프트 초안을 추가하고, `ai/memory/cascaded_retriever.py`(신규)에서 사용할 few-shot 예시/판정 규칙 정의
+    - [ ] 4.5.6.2: `ai/memory/cascaded_retriever.py`에서 `CascadedRetriever` 클래스를 구현해 ① `MemoryRepository.search()`로 1차 상위 5개 조회 → ② LLM 필터(`AIBrain`) 호출 → ③ 관련 결과로부터 키워드/후속 쿼리를 생성해 재임베딩/재검색을 반복 (최대 N회, 가중치 조합 포함)
+    - [ ] 4.5.6.3: 동일 기억 재발견 방지를 위해 `CascadedRetriever` 내부에 조회 ID 캐시(set)와 재귀 깊이 제한, score 하한선, “신규 결과 없음” 카운터를 적용하고, 구성 옵션을 `Config` 혹은 `MemoryService`에서 주입 가능하도록 설계
+    - [ ] 4.5.6.4: `CascadedRetriever`가 각 반복에서 수집한 메트릭(신규 기억 수, LLM keep ratio, 누적 지연)을 `ai/core/logger`를 통해 로그/테레메트리로 남기고, `MemoryService` 또는 `GoalExecutor._prefetch_relevant_memories()`에서 결과 요약을 기록
+    - [ ] 4.5.6.5: 최종 반환 단계에서 `ai/react_engine/goal_executor.py`를 수정해 CascadedRetriever의 결과를 기존 scratchpad 주입 로직과 통합하고, 중복 제거·요약(`memory_records` 기반) 후 ReAct 컨텍스트에 전달되도록 후처리 함수를 추가
+
+- [ ] **4.5.7: 관찰 및 유지보수 체계**
+    - [ ] 4.5.7.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의
+    - [ ] 4.5.7.2: 임베딩 갱신/모델 교체 시나리오 문서화
+    - [ ] 4.5.7.3: 데이터 정리 및 개인정보 관리 정책 수립
 
 ### 🎯 **Phase 4.5 핵심 목표**
 - 대화 종료 시 자동으로 핵심 기억을 생성하고, 적절한 임베딩/메타데이터와 함께 보존
