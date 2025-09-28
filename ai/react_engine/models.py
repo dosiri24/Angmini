@@ -136,6 +136,8 @@ class ExecutionContext:
     step_started_at: Dict[int, datetime] = field(default_factory=dict)
     events: List[PlanEvent] = field(default_factory=list)
     step_outcomes: Dict[int, str] = field(default_factory=dict)
+    thinking_characters: int = 0
+    final_response_characters: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
 
     def record_event(self, event: PlanEvent) -> None:
@@ -188,7 +190,11 @@ class ExecutionContext:
         return "\n".join(entry.to_prompt_fragment() for entry in entries)
 
     def append_scratch(self, note: str) -> None:
-        self.scratchpad.append(note)
+        stripped = note.strip()
+        if not stripped:
+            return
+        self.scratchpad.append(stripped)
+        self.thinking_characters += len(stripped)
 
     def final_scratchpad_digest(self) -> str:
         """Return a newline-joined summary of all scratch notes."""
@@ -216,3 +222,6 @@ class ExecutionContext:
         if not lines:
             return "(완료된 단계 정보 없음)"
         return "\n".join(lines)
+
+    def record_final_response_length(self, message: str) -> None:
+        self.final_response_characters = len(message)

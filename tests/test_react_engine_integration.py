@@ -9,6 +9,7 @@ import pytest
 
 from ai.core.logger import setup_logging
 from ai.react_engine import AgentScratchpad, GoalExecutor, LoopDetector, SafetyGuard, StepExecutor
+from ai.react_engine.models import ExecutionContext
 from mcp import create_default_tool_manager
 from mcp.tool_manager import ToolManager
 from mcp.tool_blueprint import ToolBlueprint, ToolResult
@@ -229,6 +230,86 @@ def test_goal_executor_requests_follow_up_after_read_only_plan() -> None:
     assert context.metadata.get("auto_followup_replans") == 1
     assert all(step.status.value == "done" for step in context.plan_steps)
     assert not context.fail_log
+
+
+def test_final_message_includes_character_usage() -> None:
+    setup_logging("WARNING")
+
+    tool_manager = ToolManager()
+    plan_json = (
+        "[{"
+        "\"id\": 1,"
+        "\"description\": \"사용자에게 진행 상황을 알려줘\","
+        "\"tool\": null,"
+        "\"parameters\": {},"
+        "\"status\": \"todo\"}]"
+    )
+
+    responses = [plan_json, "요청하신 내용을 모두 정리해두었습니다."]
+    brain = SequencedBrain(responses)
+
+    step_executor = StepExecutor(tool_manager, brain=brain)
+    safety_guard = SafetyGuard()
+    scratchpad = AgentScratchpad()
+    goal_executor = GoalExecutor(
+        brain=brain,
+        tool_manager=tool_manager,
+        step_executor=step_executor,
+        safety_guard=safety_guard,
+        scratchpad=scratchpad,
+        loop_detector=LoopDetector(),
+    )
+
+    context = goal_executor.run("진행 상황 알려줘")
+
+    final_message = context.metadata.get("final_message")
+    assert isinstance(final_message, str)
+    assert final_message.endswith("]")
+    assert "chars_total=" in final_message and "thinking_chars=" in final_message
+
+    usage = context.metadata.get("character_usage")
+    assert isinstance(usage, dict)
+    assert usage["thinking_chars"] == context.thinking_characters
+    base_message = final_message.split(" [chars_total=", 1)[0]
+    assert context.final_response_characters == len(base_message)
+    assert usage["chars_total"] == usage["thinking_chars"] + context.final_response_characters
+
+
+def test_personal_information_triggers_memory_capture(monkeypatch: pytest.MonkeyPatch) -> None:
+    setup_logging("WARNING")
+
+    tool_manager = ToolManager()
+    plan_json = json_dumps(
+        [
+            {
+                "id": 1,
+                "description": "사용자에게 응답",
+                "tool": None,
+                "parameters": {},
+                "status": "todo",
+            }
+        ]
+    )
+
+    brain = DummyBrain(plan_json)
+    step_executor = StepExecutor(tool_manager, brain=brain)
+    goal_executor = GoalExecutor(
+        brain=brain,
+        tool_manager=tool_manager,
+        step_executor=step_executor,
+        safety_guard=SafetyGuard(),
+        scratchpad=AgentScratchpad(),
+        loop_detector=LoopDetector(),
+    )
+
+    context = ExecutionContext(goal="사용자 개인 정보 요청")
+    context.final_response_characters = len("알겠습니다, 생일 기억해둘게요.")
+    context.thinking_characters = 120
+    context.metadata["final_message"] = "알겠습니다, 생일 기억해둘게요."
+
+    should_capture = goal_executor._should_capture_memory(context, "내 생일은 5월 3일이야")
+
+    assert should_capture is True
 
 
 def json_dumps(payload: dict[str, Any]) -> str:

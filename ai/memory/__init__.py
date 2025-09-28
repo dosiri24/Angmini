@@ -11,6 +11,7 @@ from .embedding import QwenEmbeddingModel
 from .memory_curator import MemoryCurator
 from .memory_records import MemoryCategory, MemoryRecord, MemorySourceData
 from .pipeline import MemoryPipeline, MemoryPipelineResult
+from .metrics import MemoryMetrics
 from .retention_policy import MemoryRetentionDecision, MemoryRetentionPolicy
 from .service import MemoryCaptureResult, MemoryService
 from .snapshot_extractor import SnapshotExtractor
@@ -47,4 +48,5 @@ __all__ = [
     "CascadedRetrievalResult",
     "CascadedMemoryMatch",
     "RetrievalIterationMetrics",
+    "MemoryMetrics",
 ]

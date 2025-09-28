@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from ai.core.exceptions import ToolError
 from ai.core.logger import get_logger
 from ai.memory.factory import create_memory_repository
+from ai.memory.metrics import MemoryMetrics
 from ai.memory.storage import MemoryRepository
 
 from ..tool_blueprint import ToolBlueprint, ToolResult
@@ -61,12 +63,14 @@ class MemoryTool(ToolBlueprint):
         *,
         repository_factory: Callable[[], MemoryRepository] | None = None,
         config: MemoryToolConfig | None = None,
+        metrics: MemoryMetrics | None = None,
     ) -> None:
         super().__init__()
         self._repository = repository
         self._repository_factory = repository_factory or create_memory_repository
         self._config = config or MemoryToolConfig()
         self._logger = get_logger(self.__class__.__name__)
+        self._metrics = metrics
 
         self._operation_map: Dict[str, OperationHandler] = {
             "search_experience": self._search_experience,
@@ -85,7 +89,23 @@ class MemoryTool(ToolBlueprint):
             raise ToolError(f"지원하지 않는 MemoryTool operation: {operation}")
 
         repository = self._get_repository()
-        return handler({"repository": repository, **kwargs})
+        start = perf_counter()
+        result: ToolResult | None = None
+        success = False
+        match_count = 0
+        try:
+            result = handler({"repository": repository, **kwargs})
+            success = result.success
+            match_count = self._extract_match_count(result.data)
+            return result
+        finally:
+            elapsed_ms = (perf_counter() - start) * 1000.0
+            self._record_metrics(
+                operation=operation,
+                success=success,
+                match_count=match_count,
+                latency_ms=elapsed_ms,
+            )
 
     def _get_repository(self) -> MemoryRepository:
         if self._repository is None:
@@ -185,6 +205,34 @@ class MemoryTool(ToolBlueprint):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _extract_match_count(self, data: Any) -> int:
+        if isinstance(data, dict):
+            matches = data.get("matches")
+            if isinstance(matches, list):
+                return len(matches)
+        return 0
+
+    def _record_metrics(
+        self,
+        *,
+        operation: str,
+        success: bool,
+        match_count: int,
+        latency_ms: float,
+    ) -> None:
+        if self._metrics is None:
+            return
+        self._metrics.record_retrieval(
+            operation=operation,
+            match_count=match_count,
+            latency_ms=latency_ms,
+            success=success,
+        )
+        self._logger.debug(
+            "Memory retrieval metrics: %s",
+            self._metrics.as_dict()["retrieval"],
+        )
 
     def _serialise_match(
         self,

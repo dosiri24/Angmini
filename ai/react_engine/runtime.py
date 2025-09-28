@@ -49,7 +49,12 @@ class GoalExecutorFactory:
             from mcp.tools.memory_tool import MemoryTool
 
             try:
-                self._tool_manager.register(MemoryTool(repository=service.repository))
+                self._tool_manager.register(
+                    MemoryTool(
+                        repository=service.repository,
+                        metrics=service.metrics,
+                    )
+                )
             except Exception as tool_exc:  # pragma: no cover - defensive guard
                 logger.warning("MemoryTool registration failed: %s", tool_exc)
             return service

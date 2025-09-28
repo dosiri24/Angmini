@@ -121,7 +121,10 @@ class GoalExecutor:
         if not final_message:
             final_message = self._step_executor.compose_final_message(context)
         if final_message:
-            context.metadata["final_message"] = final_message
+            clean_message = final_message.strip()
+            context.record_final_response_length(clean_message)
+            decorated = self._decorate_final_message(context, clean_message)
+            context.metadata["final_message"] = decorated
 
         self._capture_memory(context, goal)
 
@@ -198,11 +201,16 @@ class GoalExecutor:
                 latest_event = event
                 break
         latest_data_text = "(없음)"
-        if latest_event is not None and latest_event.data is not None:
-            try:
-                latest_data_text = json.dumps(latest_event.data, ensure_ascii=False, indent=2)
-            except TypeError:
-                latest_data_text = str(latest_event.data)
+        if latest_event is not None:
+            matched_step = next(
+                (step for step in context.plan_steps if step.id == latest_event.step_id),
+                None,
+            )
+            summary = summarize_step_result(matched_step, latest_event.data)
+            if matched_step is not None:
+                latest_data_text = f"#{matched_step.id} {summary}"
+            else:
+                latest_data_text = summary
 
         # Attach request timestamp (Asia/Seoul) to guide due_date calculations
         now_seoul = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%dT%H:%M:%S")
@@ -369,6 +377,17 @@ class GoalExecutor:
         raise EngineError(
             decision.reason or f"Step {step.id}에서 복구 불가능한 오류가 발생했습니다."
         )
+
+    def _decorate_final_message(self, context: ExecutionContext, message: str) -> str:
+        thinking_chars = context.thinking_characters
+        response_chars = context.final_response_characters
+        total_chars = thinking_chars + response_chars
+        usage = {
+            "chars_total": total_chars,
+            "thinking_chars": thinking_chars,
+        }
+        context.metadata["character_usage"] = usage
+        return f"{message} [chars_total={total_chars}, thinking_chars={thinking_chars}]"
 
     def _extract_direct_message(self, context: ExecutionContext) -> str | None:
         for event in reversed(context.events):
@@ -617,6 +636,10 @@ class GoalExecutor:
         if not self._memory_service:
             return
 
+        if not self._should_capture_memory(context, user_request):
+            self._logger.debug("Skipping memory capture for lightweight exchange")
+            return
+
         try:
             capture = self._memory_service.capture(context, user_request)
             capture_info: Dict[str, Any] = {
@@ -637,6 +660,62 @@ class GoalExecutor:
             self._logger.warning("Memory capture failed: %s", exc)
         except Exception as exc:  # pragma: no cover - defensive guard
             self._logger.warning("Unexpected memory capture failure: %s", exc, exc_info=True)
+
+    def _should_capture_memory(self, context: ExecutionContext, user_request: str) -> bool:
+        operations = context.metadata.get("executed_operations")
+        if isinstance(operations, list):
+            for entry in operations:
+                if not isinstance(entry, dict):
+                    continue
+                tool = entry.get("tool")
+                operation = entry.get("operation")
+                if isinstance(tool, str) and tool.strip() and isinstance(operation, str) and operation.strip():
+                    return True
+
+        if self._contains_personal_signal(user_request, context):
+            return True
+
+        request_size = len((user_request or "").strip())
+        response_size = context.final_response_characters
+        thinking_size = context.thinking_characters
+
+        if request_size <= 8 and response_size <= 48 and thinking_size <= 256:
+            return False
+        return True
+
+    def _contains_personal_signal(self, user_request: str, context: ExecutionContext) -> bool:
+        text = (user_request or "").lower()
+        if not text:
+            return False
+
+        keywords = (
+            "내 ",
+            "나의",
+            "내가",
+            "좋아하는",
+            "싫어하는",
+            "선호",
+            "취향",
+            "기억해",
+            "기억해줘",
+            "생일",
+            "birthday",
+            "phone",
+            "전화번호",
+            "email",
+            "이메일",
+            "주소",
+            "address",
+            "취미",
+        )
+        if any(keyword in text for keyword in keywords):
+            return True
+
+        response_text = "".join(context.metadata.get("final_message", "")).lower()
+        if response_text and any(keyword in response_text for keyword in keywords):
+            return True
+
+        return False
 
     # Future: integrate thinking loop with react prompt
     def render_react_prompt(self, context: ExecutionContext) -> str:

@@ -12,6 +12,7 @@ from .deduplicator import MemoryDeduplicator
 from .factory import create_memory_repository
 from .memory_curator import MemoryCurator
 from .memory_records import MemoryRecord
+from .metrics import MemoryMetrics
 from .pipeline import MemoryPipeline
 from .retention_policy import MemoryRetentionDecision, MemoryRetentionPolicy
 from .snapshot_extractor import SnapshotExtractor
@@ -36,10 +37,15 @@ class MemoryService:
         self._repository = repository
         self._pipeline = pipeline
         self._logger = get_logger(self.__class__.__name__)
+        self._metrics = MemoryMetrics()
 
     @property
     def repository(self) -> MemoryRepository:
         return self._repository
+
+    @property
+    def metrics(self) -> MemoryMetrics:
+        return self._metrics
 
     @classmethod
     def build(cls, brain) -> "MemoryService":  # noqa: ANN001 - brain type is AIBrain
@@ -91,6 +97,12 @@ class MemoryService:
             duplicate_id=duplicate_id,
             record=stored_record,
         )
+        self._metrics.record_capture(
+            should_store=pipeline_result.retention.should_store,
+            stored=stored,
+            duplicate_detected=duplicate_id is not None,
+        )
+        self._logger.debug("Memory capture metrics: %s", self._metrics.as_dict()["capture"])
         return result
 
     def create_memory_tool(self):  # pragma: no cover - thin wrapper
