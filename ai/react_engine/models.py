@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 
 class PlanStepStatus(str, Enum):
@@ -136,8 +136,8 @@ class ExecutionContext:
     step_started_at: Dict[int, datetime] = field(default_factory=dict)
     events: List[PlanEvent] = field(default_factory=list)
     step_outcomes: Dict[int, str] = field(default_factory=dict)
-    thinking_characters: int = 0
-    final_response_characters: int = 0
+    thinking_tokens: int = 0
+    response_tokens: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
 
     def record_event(self, event: PlanEvent) -> None:
@@ -194,7 +194,6 @@ class ExecutionContext:
         if not stripped:
             return
         self.scratchpad.append(stripped)
-        self.thinking_characters += len(stripped)
 
     def final_scratchpad_digest(self) -> str:
         """Return a newline-joined summary of all scratch notes."""
@@ -223,5 +222,38 @@ class ExecutionContext:
             return "(완료된 단계 정보 없음)"
         return "\n".join(lines)
 
-    def record_final_response_length(self, message: str) -> None:
-        self.final_response_characters = len(message)
+    def record_token_usage(self, usage: Mapping[str, Any], *, category: str) -> None:
+        if not isinstance(usage, Mapping):
+            return
+
+        usage_metadata = usage.get("usage_metadata")
+        if not isinstance(usage_metadata, Mapping):
+            usage_metadata = {}
+
+        total_tokens = int((usage_metadata.get("total_token_count") or 0) or 0)
+        prompt_tokens = int((usage_metadata.get("prompt_token_count") or 0) or 0)
+        candidate_tokens = int((usage_metadata.get("candidates_token_count") or 0) or 0)
+
+        if total_tokens == 0 and (prompt_tokens or candidate_tokens):
+            total_tokens = prompt_tokens + candidate_tokens
+
+        token_stats = self.metadata.setdefault(
+            "token_usage",
+            {
+                "total_tokens": 0,
+                "prompt_tokens": 0,
+                "response_tokens": 0,
+                "thinking_tokens": 0,
+            },
+        )
+
+        token_stats["total_tokens"] += total_tokens
+        token_stats["prompt_tokens"] += prompt_tokens
+
+        if category == "final":
+            response_tokens = candidate_tokens or max(total_tokens - prompt_tokens, 0)
+            self.response_tokens += response_tokens
+            token_stats["response_tokens"] += response_tokens
+        else:
+            self.thinking_tokens += total_tokens
+            token_stats["thinking_tokens"] += total_tokens

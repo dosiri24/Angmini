@@ -54,7 +54,8 @@ def test_ai_brain_generate_text_smoke(dummy_genai):
     )
 
     brain = AIBrain(config)
-    assert brain.generate_text("hello") == "smoke-output"
+    response = brain.generate_text("hello")
+    assert response.text == "smoke-output"
 
 
 def test_ai_brain_requires_api_key(dummy_genai):

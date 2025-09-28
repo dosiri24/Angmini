@@ -7,6 +7,7 @@ from typing import Any, List, Optional
 
 import pytest
 
+from ai.ai_brain import LLMResponse
 from ai.core.logger import setup_logging
 from ai.react_engine import AgentScratchpad, GoalExecutor, LoopDetector, SafetyGuard, StepExecutor
 from ai.react_engine.models import ExecutionContext
@@ -22,8 +23,8 @@ class DummyBrain:
     def __init__(self, plan_json: str) -> None:
         self._plan_json = plan_json
 
-    def generate_text(self, prompt: str) -> str:  # pragma: no cover - simple stub
-        return self._plan_json
+    def generate_text(self, prompt: str) -> LLMResponse:  # pragma: no cover - simple stub
+        return LLMResponse(text=self._plan_json, metadata={"usage_metadata": {"total_token_count": 5}})
 
 
 class SequencedBrain:
@@ -34,13 +35,13 @@ class SequencedBrain:
         self._final_response = final_response
         self._index = 0
 
-    def generate_text(self, prompt: str, temperature: float | None = None) -> str:  # pragma: no cover
+    def generate_text(self, prompt: str, temperature: float | None = None) -> LLMResponse:  # pragma: no cover
         if self._index < len(self._responses):
             response = self._responses[self._index]
         else:
             response = self._final_response
         self._index += 1
-        return response
+        return LLMResponse(text=response, metadata={"usage_metadata": {"total_token_count": 7, "candidates_token_count": 4}})
 
 
 class DummyNotionTool(ToolBlueprint):
@@ -265,14 +266,15 @@ def test_final_message_includes_character_usage() -> None:
     final_message = context.metadata.get("final_message")
     assert isinstance(final_message, str)
     assert final_message.endswith("]")
-    assert "chars_total=" in final_message and "thinking_chars=" in final_message
+    assert "tokens_total=" in final_message and "thinking_tokens=" in final_message
+    assert "response_tokens=" in final_message
 
-    usage = context.metadata.get("character_usage")
+    usage = context.metadata.get("token_usage")
     assert isinstance(usage, dict)
-    assert usage["thinking_chars"] == context.thinking_characters
-    base_message = final_message.split(" [chars_total=", 1)[0]
-    assert context.final_response_characters == len(base_message)
-    assert usage["chars_total"] == usage["thinking_chars"] + context.final_response_characters
+    assert usage["thinking_tokens"] == context.thinking_tokens
+    assert usage["response_tokens"] == context.response_tokens
+    assert usage["total_tokens"] >= usage["thinking_tokens"] + usage["response_tokens"]
+    assert "prompt_tokens" in usage
 
 
 def test_personal_information_triggers_memory_capture(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -303,9 +305,15 @@ def test_personal_information_triggers_memory_capture(monkeypatch: pytest.Monkey
     )
 
     context = ExecutionContext(goal="사용자 개인 정보 요청")
-    context.final_response_characters = len("알겠습니다, 생일 기억해둘게요.")
-    context.thinking_characters = 120
+    context.response_tokens = 4
+    context.thinking_tokens = 16
     context.metadata["final_message"] = "알겠습니다, 생일 기억해둘게요."
+    context.metadata["token_usage"] = {
+        "total_tokens": 20,
+        "prompt_tokens": 0,
+        "thinking_tokens": context.thinking_tokens,
+        "response_tokens": context.response_tokens,
+    }
 
     should_capture = goal_executor._should_capture_memory(context, "내 생일은 5월 3일이야")
 

@@ -40,3 +40,4 @@ external/apple-mcp/bun.lockb
 
 # Memory data
 data/memory/*
+tests/stream.py

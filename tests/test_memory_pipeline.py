@@ -27,7 +27,9 @@ class DummyBrain:
         self.response = response
 
     def generate_text(self, prompt: str, **kwargs):  # noqa: ANN007 - match AIBrain
-        return self.response
+        from ai.ai_brain import LLMResponse
+
+        return LLMResponse(text=self.response, metadata={"usage_metadata": {}})
 
 
 def _build_context() -> ExecutionContext:

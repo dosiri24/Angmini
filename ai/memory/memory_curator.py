@@ -27,12 +27,12 @@ class MemoryCurator:
     def curate(self, source: MemorySourceData) -> MemoryRecord:
         prompt = self._render_prompt(source)
         self._logger.debug("Invoking memory curator prompt")
-        response = self._brain.generate_text(
+        llm_response = self._brain.generate_text(
             prompt,
             temperature=0.2,
             max_output_tokens=CURATOR_MAX_OUTPUT_TOKENS,
         )
-        payload = self._parse_response(response)
+        payload = self._parse_response(llm_response.text)
         return self._build_record(payload, source)
 
     def _render_prompt(self, source: MemorySourceData) -> str:

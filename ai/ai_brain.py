@@ -26,6 +26,14 @@ class PromptMessage:
     content: str
 
 
+@dataclass(frozen=True)
+class LLMResponse:
+    """LLM completion result that includes token usage metadata."""
+
+    text: str
+    metadata: Dict[str, Any]
+
+
 class AIBrain:
     """Adapter responsible for communicating with the Gemini API."""
 
@@ -54,7 +62,7 @@ class AIBrain:
         history: Optional[Sequence[PromptMessage]] = None,
         temperature: float = 0.7,
         max_output_tokens: Optional[int] = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Request a completion from Gemini using an optional conversation history."""
         contents = self._build_contents(prompt, history)
         try:
@@ -97,7 +105,7 @@ class AIBrain:
                 str(safety) if safety else None,
             )
             raise EngineError("Gemini API가 비어있는 응답을 반환했습니다.")
-        return text
+        return LLMResponse(text=text, metadata=response_metadata)
 
     def _configure_client(self, api_key: str) -> None:
         genai.configure(api_key=api_key)
@@ -159,6 +167,14 @@ class AIBrain:
                     "candidates_token_count": getattr(usage, "candidates_token_count", None),
                     "total_token_count": getattr(usage, "total_token_count", None),
                 }
+
+        top_level_usage = getattr(response, "usage_metadata", None)
+        if top_level_usage is not None:
+            usage_dict = metadata.setdefault("usage_metadata", {})
+            for key in ("prompt_token_count", "candidates_token_count", "total_token_count"):
+                value = getattr(top_level_usage, key, None)
+                if value is not None:
+                    usage_dict[key] = value
 
         prompt_feedback = getattr(response, "prompt_feedback", None)
         if prompt_feedback:

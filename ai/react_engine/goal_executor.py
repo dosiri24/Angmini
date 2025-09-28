@@ -122,7 +122,6 @@ class GoalExecutor:
             final_message = self._step_executor.compose_final_message(context)
         if final_message:
             clean_message = final_message.strip()
-            context.record_final_response_length(clean_message)
             decorated = self._decorate_final_message(context, clean_message)
             context.metadata["final_message"] = decorated
 
@@ -138,9 +137,10 @@ class GoalExecutor:
         available_tools = self._tool_manager.list()
         prompt = self._build_plan_prompt(context.goal, available_tools, context, reason)
         self._logger.debug("Plan prompt generated:\n%s", prompt)
-        response = self._brain.generate_text(prompt)
-        self._logger.debug("Plan response raw: %s", response)
-        steps = self._parse_plan_response(response)
+        llm_response = self._brain.generate_text(prompt)
+        context.record_token_usage(llm_response.metadata, category="thinking")
+        self._logger.debug("Plan response raw: %s", llm_response.text)
+        steps = self._parse_plan_response(llm_response.text)
         if not steps:
             raise EngineError("LLM이 빈 계획을 반환했습니다.")
 
@@ -379,15 +379,25 @@ class GoalExecutor:
         )
 
     def _decorate_final_message(self, context: ExecutionContext, message: str) -> str:
-        thinking_chars = context.thinking_characters
-        response_chars = context.final_response_characters
-        total_chars = thinking_chars + response_chars
-        usage = {
-            "chars_total": total_chars,
-            "thinking_chars": thinking_chars,
-        }
-        context.metadata["character_usage"] = usage
-        return f"{message} [chars_total={total_chars}, thinking_chars={thinking_chars}]"
+        token_usage = context.metadata.get("token_usage", {})
+        total_tokens = token_usage.get("total_tokens")
+        if total_tokens is None:
+            total_tokens = context.thinking_tokens + context.response_tokens
+        thinking_tokens = token_usage.get("thinking_tokens", context.thinking_tokens)
+        response_tokens = token_usage.get("response_tokens", context.response_tokens)
+
+        token_usage.update(
+            {
+                "total_tokens": total_tokens,
+                "thinking_tokens": thinking_tokens,
+                "response_tokens": response_tokens,
+            }
+        )
+        context.metadata["token_usage"] = token_usage
+        return (
+            f"{message} [tokens_total={total_tokens}, "
+            f"thinking_tokens={thinking_tokens}, response_tokens={response_tokens}]"
+        )
 
     def _extract_direct_message(self, context: ExecutionContext) -> str | None:
         for event in reversed(context.events):
@@ -676,10 +686,11 @@ class GoalExecutor:
             return True
 
         request_size = len((user_request or "").strip())
-        response_size = context.final_response_characters
-        thinking_size = context.thinking_characters
+        token_usage = context.metadata.get("token_usage", {})
+        response_tokens = token_usage.get("response_tokens", context.response_tokens)
+        thinking_tokens = token_usage.get("thinking_tokens", context.thinking_tokens)
 
-        if request_size <= 8 and response_size <= 48 and thinking_size <= 256:
+        if request_size <= 8 and response_tokens <= 16 and thinking_tokens <= 128:
             return False
         return True
 

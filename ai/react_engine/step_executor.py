@@ -93,7 +93,7 @@ class StepExecutor:
         )
         self._logger.debug("Generating direct response for step %s", step.id)
         try:
-            message = self._brain.generate_text(prompt, temperature=0.6)
+            llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
             self._logger.warning("대화 응답 생성 실패: %s", exc)
             return StepResult(
@@ -102,6 +102,9 @@ class StepExecutor:
                 error_reason=str(exc),
                 attempt=attempt,
             )
+
+        context.record_token_usage(llm_response.metadata, category="final")
+        message = llm_response.text
 
         self._logger.info("Step %s 대화 응답 완료", step.id)
         return StepResult(
@@ -176,10 +179,13 @@ class StepExecutor:
         )
         self._logger.debug("Generating final response summary")
         try:
-            return self._brain.generate_text(prompt, temperature=0.6)
+            llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
             self._logger.warning("최종 응답 생성 실패: %s", exc)
             return None
+
+        context.record_token_usage(llm_response.metadata, category="final")
+        return llm_response.text
 
     def _latest_event(self, context: ExecutionContext) -> StepCompletedEvent | None:
         for event in reversed(context.events):

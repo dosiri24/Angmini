@@ -177,13 +177,13 @@ class CascadedRetriever:
         candidates: Sequence[Tuple[MemoryRecord, float]],
     ) -> Dict[str, List[Dict[str, object]]]:
         prompt = self._render_prompt(user_request, current_query, depth, candidates)
-        response = self._brain.generate_text(
+        llm_response = self._brain.generate_text(
             prompt,
             temperature=0.1,
             max_output_tokens=800,
         )
         try:
-            data = json.loads(response)
+            data = json.loads(llm_response.text)
         except json.JSONDecodeError as exc:
             raise EngineError("LLM filter가 JSON 형식을 반환하지 않았습니다.") from exc
 
