@@ -1,5 +1,11 @@
 """Memory subsystem primitives for the Personal AI Assistant."""
 
+from .cascaded_retriever import (
+    CascadedMemoryMatch,
+    CascadedRetrievalResult,
+    CascadedRetriever,
+    RetrievalIterationMetrics,
+)
 from .deduplicator import MemoryDeduplicator
 from .embedding import QwenEmbeddingModel
 from .memory_curator import MemoryCurator
@@ -37,4 +43,8 @@ __all__ = [
     "MemoryRetentionDecision",
     "MemoryRetentionPolicy",
     "SnapshotExtractor",
+    "CascadedRetriever",
+    "CascadedRetrievalResult",
+    "CascadedMemoryMatch",
+    "RetrievalIterationMetrics",
 ]

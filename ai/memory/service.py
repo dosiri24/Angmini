@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Iterable, Optional
 
 from ai.core.logger import get_logger
@@ -70,7 +71,13 @@ class MemoryService:
         stored = False
 
         if pipeline_result.record is not None and pipeline_result.retention.should_store:
-            stored_record = self._repository.add(pipeline_result.record)
+            record_to_store = pipeline_result.record
+            metadata = record_to_store.source_metadata
+            metadata["retention_reason"] = pipeline_result.retention.reason
+            metadata["retention_timestamp"] = datetime.utcnow().isoformat()
+            metadata["resolved"] = True
+
+            stored_record = self._repository.add(record_to_store)
             stored = True
             record_id = stored_record.source_metadata.get("id")
             category = stored_record.category.value

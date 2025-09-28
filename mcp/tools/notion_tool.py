@@ -34,11 +34,14 @@ class NotionTool(ToolBlueprint):
                 "list_tasks",
                 "list_projects",
                 "find_project",
+                "update_task",
                 "create_todo",
                 "list_todo",
                 "list_todos",
                 "todo_create",
                 "todo_list",
+                "update_todo",
+                "todo_update",
             ],
             "description": "수행할 작업 종류 (todo/투두 별칭 포함)",
         },
@@ -57,6 +60,10 @@ class NotionTool(ToolBlueprint):
         "notes": {
             "type": "string",
             "description": "추가 설명 또는 메모",
+        },
+        "page_id": {
+            "type": "string",
+            "description": "업데이트할 페이지(할일)의 ID",
         },
         "relations": {
             "type": "array",
@@ -191,6 +198,8 @@ class NotionTool(ToolBlueprint):
                 return self._list_projects(client, **kwargs)
             if operation == "find_project":
                 return self._find_project(client, **kwargs)
+            if operation == "update_task":
+                return self._update_task(client, **kwargs)
             return self._list_entries(
                 client,
                 default_database=self._default_todo_database_id,
@@ -251,6 +260,82 @@ class NotionTool(ToolBlueprint):
             payload["relations"] = relations
         return ToolResult(success=True, data=payload)
 
+    def _update_task(self, client: Any, **kwargs: Any) -> ToolResult:
+        page_id = self._require_non_empty(kwargs.get("page_id"), "page_id")
+        title = self._optional_str(kwargs.get("title"))
+        notes = kwargs.get("notes")
+        due_date = self._optional_str(kwargs.get("due_date"))
+        status_value = self._optional_str(kwargs.get("status"))
+        raw_relations = kwargs.get("relations") if "relations" in kwargs else kwargs.get("relation_ids")
+        project_database_hint = self._optional_str(kwargs.get("project_database_id"))
+
+        title_property_name = self._task_properties["title"]
+        properties: Dict[str, Any] = {}
+
+        if title is not None:
+            properties.update(self._build_title_property(title, title_property_name))
+
+        notes_property = self._task_properties.get("notes")
+        normalized_notes: Optional[str]
+        if notes is None:
+            normalized_notes = None
+        else:
+            normalized_notes = self._optional_str(notes)
+        if notes_property:
+            if normalized_notes is not None:
+                properties[notes_property] = {"rich_text": [{"text": {"content": normalized_notes[:2000]}}]}
+            elif "notes" in kwargs:
+                properties[notes_property] = {"rich_text": []}
+
+        due_property = self._task_properties.get("due")
+        if due_property:
+            if due_date:
+                properties[due_property] = {"date": {"start": self._ensure_kst_timezone(due_date)}}
+            elif "due_date" in kwargs:
+                # Clear the due date when explicit null-equivalent provided
+                properties[due_property] = {"date": None}
+
+        status_property = self._task_properties.get("status")
+        if status_property:
+            if status_value:
+                properties[status_property] = {"status": {"name": status_value}}
+            elif "status" in kwargs:
+                properties[status_property] = {"status": None}
+
+        relation_property = self._task_properties.get("relation")
+        relations = self._normalise_relations(raw_relations)
+
+        if relation_property:
+            if relations is None and "relations" not in kwargs and "relation_ids" not in kwargs:
+                existing_context = self._retrieve_task_context(client, page_id)
+                fallback_title = title if title is not None else existing_context.get("title")
+                fallback_notes = normalized_notes if normalized_notes is not None else existing_context.get("notes")
+                relations = self._auto_select_project_relations(
+                    client,
+                    task_title=fallback_title or "",
+                    task_notes=fallback_notes,
+                    project_database_id=project_database_hint,
+                )
+            if relations is not None:
+                properties[relation_property] = {"relation": relations}
+
+        override_properties = self._validate_properties(kwargs.get("properties"))
+        if override_properties:
+            properties.update(override_properties)
+
+        if not properties:
+            raise ToolError("업데이트할 속성을 하나 이상 지정하세요.")
+
+        page = client.pages.update(page_id=page_id, properties=properties)
+        payload: Dict[str, Any] = {
+            "id": page.get("id") or page_id,
+            "url": page.get("url"),
+            "operation": "update_task",
+        }
+        if relation_property and relation_property in properties:
+            payload["relations"] = properties[relation_property]["relation"]
+        return ToolResult(success=True, data=payload)
+
     def _ensure_kst_timezone(self, raw: str) -> str:
         """Ensure datetime strings with time include KST(+09:00) offset.
 
@@ -278,6 +363,32 @@ class NotionTool(ToolBlueprint):
             return text
         # No timezone info → append KST offset
         return f"{text}+09:00"
+
+    def _retrieve_task_context(self, client: Any, page_id: str) -> Dict[str, Optional[str]]:
+        """Fetch current task metadata used for auto-matching or fallbacks."""
+
+        try:
+            page = client.pages.retrieve(page_id=page_id)
+        except APIResponseError as exc:  # pragma: no cover - depends on live API responses
+            raise ToolError(f"Notion 페이지 조회에 실패했습니다: {exc}") from exc
+        except Exception as exc:  # pragma: no cover - unexpected runtime failure
+            raise ToolError(f"Notion 페이지 정보를 가져오지 못했습니다: {exc}") from exc
+
+        properties = page.get("properties", {}) if isinstance(page, dict) else {}
+        title = self._extract_title_by_name(properties, self._task_properties.get("title"))
+        notes = self._extract_rich_text_by_name(properties, self._task_properties.get("notes"))
+        extras: Dict[str, Optional[str]] = {
+            "title": title,
+            "notes": notes,
+        }
+
+        relation_property = self._task_properties.get("relation")
+        if relation_property:
+            existing_relations = self._extract_relations(properties) or {}
+            extras["relations_property_name"] = relation_property
+            extras["existing_relations"] = ",".join(existing_relations.get(relation_property, [])) or None
+
+        return extras
 
     # ------------------------------------------------------------------
     # Listing helpers
@@ -825,6 +936,11 @@ class NotionTool(ToolBlueprint):
             "todo_list": "list_tasks",
             "create_todos": "create_task",
             "add_todo": "create_task",
+            "update_task": "update_task",
+            "update_todo": "update_task",
+            "todo_update": "update_task",
+            "modify_task": "update_task",
+            "modify_todo": "update_task",
         }
 
         if normalized in alias_map:
@@ -835,12 +951,16 @@ class NotionTool(ToolBlueprint):
                 return "list_tasks"
             if "create" in normalized or "add" in normalized or "추가" in normalized:
                 return "create_task"
+            if "update" in normalized or "modify" in normalized or "수정" in normalized:
+                return "update_task"
 
         if "투두" in normalized:
             if "조회" in normalized or "list" in normalized:
                 return "list_tasks"
+            if "수정" in normalized or "update" in normalized or "변경" in normalized:
+                return "update_task"
             return "create_task"
 
         raise ToolError(
-            "operation 파라미터는 create_task/list_tasks/list_projects/find_project 또는 todo/투두 관련 별칭이어야 합니다."
+            "operation 파라미터는 create_task/list_tasks/update_task/list_projects/find_project 또는 관련 별칭이어야 합니다."
         )

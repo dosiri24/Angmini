@@ -135,6 +135,7 @@ class ExecutionContext:
     attempt_counts: Dict[int, int] = field(default_factory=dict)
     step_started_at: Dict[int, datetime] = field(default_factory=dict)
     events: List[PlanEvent] = field(default_factory=list)
+    step_outcomes: Dict[int, str] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
 
     def record_event(self, event: PlanEvent) -> None:
@@ -192,3 +193,26 @@ class ExecutionContext:
     def final_scratchpad_digest(self) -> str:
         """Return a newline-joined summary of all scratch notes."""
         return "\n".join(self.scratchpad)
+
+    def record_step_outcome(self, step_id: int, summary: str) -> None:
+        """Store a short narrative about the result of a completed step."""
+        if summary:
+            self.step_outcomes[step_id] = summary.strip()
+        else:
+            self.step_outcomes[step_id] = ""
+
+    def plan_results_digest(self) -> str:
+        """Return a short digest describing outcomes of completed steps."""
+        lines: List[str] = []
+        for step in self.plan_steps:
+            if step.status != PlanStepStatus.DONE:
+                continue
+            outcome = self.step_outcomes.get(step.id)
+            if outcome:
+                lines.append(f"#{step.id} {outcome}")
+            else:
+                lines.append(f"#{step.id} {step.description} 완료")
+
+        if not lines:
+            return "(완료된 단계 정보 없음)"
+        return "\n".join(lines)

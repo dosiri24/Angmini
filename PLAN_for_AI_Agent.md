@@ -174,12 +174,12 @@
     - [x] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
     - [x] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
 
-- [ ] **4.5.6: Cascaded LLM-Filter Retrieval 실험**
-    - [ ] 4.5.6.1: `ai/memory/prompts/`에 LLM 필터링 프롬프트 초안을 추가하고, `ai/memory/cascaded_retriever.py`(신규)에서 사용할 few-shot 예시/판정 규칙 정의
-    - [ ] 4.5.6.2: `ai/memory/cascaded_retriever.py`에서 `CascadedRetriever` 클래스를 구현해 ① `MemoryRepository.search()`로 1차 상위 5개 조회 → ② LLM 필터(`AIBrain`) 호출 → ③ 관련 결과로부터 키워드/후속 쿼리를 생성해 재임베딩/재검색을 반복 (최대 N회, 가중치 조합 포함)
-    - [ ] 4.5.6.3: 동일 기억 재발견 방지를 위해 `CascadedRetriever` 내부에 조회 ID 캐시(set)와 재귀 깊이 제한, score 하한선, “신규 결과 없음” 카운터를 적용하고, 구성 옵션을 `Config` 혹은 `MemoryService`에서 주입 가능하도록 설계
-    - [ ] 4.5.6.4: `CascadedRetriever`가 각 반복에서 수집한 메트릭(신규 기억 수, LLM keep ratio, 누적 지연)을 `ai/core/logger`를 통해 로그/테레메트리로 남기고, `MemoryService` 또는 `GoalExecutor._prefetch_relevant_memories()`에서 결과 요약을 기록
-    - [ ] 4.5.6.5: 최종 반환 단계에서 `ai/react_engine/goal_executor.py`를 수정해 CascadedRetriever의 결과를 기존 scratchpad 주입 로직과 통합하고, 중복 제거·요약(`memory_records` 기반) 후 ReAct 컨텍스트에 전달되도록 후처리 함수를 추가
+- [x] **4.5.6: Cascaded LLM-Filter Retrieval 실험**
+    - [x] 4.5.6.1: `ai/memory/prompts/`에 LLM 필터링 프롬프트 초안을 추가하고, `ai/memory/cascaded_retriever.py`(신규)에서 사용할 few-shot 예시/판정 규칙 정의
+    - [x] 4.5.6.2: `ai/memory/cascaded_retriever.py`에서 `CascadedRetriever` 클래스를 구현해 ① `MemoryRepository.search()`로 1차 상위 5개 조회 → ② LLM 필터(`AIBrain`) 호출 → ③ 관련 결과로부터 키워드/후속 쿼리를 생성해 재임베딩/재검색을 반복 (최대 N회, 가중치 조합 포함)
+    - [x] 4.5.6.3: 동일 기억 재발견 방지를 위해 `CascadedRetriever` 내부에 조회 ID 캐시(set)와 재귀 깊이 제한, score 하한선, “신규 결과 없음” 카운터를 적용하고, 구성 옵션을 `Config` 혹은 `MemoryService`에서 주입 가능하도록 설계
+    - [x] 4.5.6.4: `CascadedRetriever`가 각 반복에서 수집한 메트릭(신규 기억 수, LLM keep ratio, 누적 지연)을 `ai/core/logger`를 통해 로그/테레메트리로 남기고, `MemoryService` 또는 `GoalExecutor._prefetch_relevant_memories()`에서 결과 요약을 기록
+    - [x] 4.5.6.5: 최종 반환 단계에서 `ai/react_engine/goal_executor.py`를 수정해 CascadedRetriever의 결과를 기존 scratchpad 주입 로직과 통합하고, 중복 제거·요약(`memory_records` 기반) 후 ReAct 컨텍스트에 전달되도록 후처리 함수를 추가
 
 - [ ] **4.5.7: 관찰 및 유지보수 체계**
     - [ ] 4.5.7.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의

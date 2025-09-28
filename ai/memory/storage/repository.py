@@ -59,9 +59,17 @@ class MemoryRepository:
         matches: List[Tuple[MemoryRecord, float]] = []
         for entry in results:
             record = records_by_id.get(entry.record_id)
-            if record:
+            if record and self._is_eligible(record):
                 matches.append((record, entry.score))
         return matches
+
+    @staticmethod
+    def _is_eligible(record: MemoryRecord) -> bool:
+        metadata = record.source_metadata or {}
+        resolved = metadata.get("resolved")
+        if resolved is False:
+            return False
+        return True
 
     def _ensure_record_id(self, record: MemoryRecord) -> str:
         metadata = record.source_metadata

@@ -14,6 +14,7 @@ from ai.memory.snapshot_extractor import SnapshotExtractor
 from ai.memory.memory_records import MemoryCategory, MemoryRecord
 from ai.react_engine.models import (
     ExecutionContext,
+    FailureLogEntry,
     PlanStep,
     PlanStepStatus,
     StepCompletedEvent,
@@ -121,3 +122,29 @@ def test_memory_pipeline_merges_duplicates():
         "사용자 일정 정리 경험 기록",
         "사용자 일정 정리 경험을 기록",
     }
+
+
+def test_memory_retention_records_resolved_failures():
+    response = (
+        '{"summary": "오류 후 일정을 성공적으로 정리",'
+        ' "user_intent": "일정을 정리",'
+        ' "outcome": "성공",'
+        ' "category": "full_experience",'
+        ' "tools_used": ["notion"],'
+        ' "tags": ["success"]}'
+    )
+    pipeline = _build_pipeline(DummyBrain(response))
+    context = _build_context()
+    context.add_failure(
+        FailureLogEntry(
+            step_id=1,
+            command="{\"tool\": \"notion\"}",
+            error_message="API 오류",
+            attempt=1,
+        )
+    )
+
+    result = pipeline.run(context, user_request="오늘 일정을 정리해줘")
+
+    assert result.retention.should_store is True
+    assert result.retention.reason == "오류를 해결한 성공 사례를 저장합니다."
