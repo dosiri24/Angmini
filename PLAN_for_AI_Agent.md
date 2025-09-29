@@ -251,19 +251,18 @@ Angmini/
             - "미완료 중요 작업들 점검해서 현황 알림 생성" (LOW priority)
     - [ ] 5.2.2: GoalExecutor가 이해할 수 있는 자연어 목표로 표현 (기존 시스템 그대로 활용)
     - [ ] 5.2.3: MemoryService 통합 강화
-        - [ ] 5.2.3.1: 기존 `MemoryService.repository.search()` 활용한 패턴 학습
-        - [ ] 5.2.3.2: 알림 응답 패턴 학습 (읽음/무시/연기 등)
-        - [ ] 5.2.3.3: 최적 알림 시간대 자동 조정
-        - [ ] 5.2.3.4: 반복되는 작업 패턴 감지 및 선제적 알림 생성
+        - [ ] 5.2.3.1: 기존 `MemoryService.repository.search()` 활용한 패턴 학습 구현
+        - [ ] 5.2.3.2: 알림 응답 패턴 학습 시스템
+        - [ ] 5.2.3.3: 최적 알림 시간대 자동 조정 기능
+        - [ ] 5.2.3.4: 반복 작업 패턴 감지 및 선제적 알림 시스템
 
 - [ ] **5.3: 알림 발송 인터페이스 확장**
     - [ ] 5.3.1: `interface/notification_sender.py`: 기존 인터페이스 확장 (기존 `interface/cli.py`, `interface/discord_bot.py` 패턴 활용)
-    - [ ] 5.3.2: CLI 알림: macOS `osascript` 활용한 시스템 알림 + 터미널 메시지
-    - [ ] 5.3.3: Discord 알림: 기존 봇 클라이언트로 사용자에게 DM 발송 (기존 `GoalExecutorFactory` 재사용)
-    - [ ] 5.3.4: 알림 중복 방지 및 이력 관리
-        - [ ] 5.3.4.1: schedules.db의 notification_history 테이블 활용한 중복 체크
-        - [ ] 5.3.4.2: 목표 해시값 기반 중복 방지 로직 (기존 `ai/memory/deduplicator.py` 패턴 참고)
-        - [ ] 5.3.4.3: JSON Lines 형식(`notification_log.jsonl`)으로 구조화된 로그 저장
+    - [ ] 5.3.2: Discord 알림: 기존 봇 클라이언트로 사용자에게 DM 발송 (기존 `GoalExecutorFactory` 재사용)
+    - [ ] 5.3.3: 알림 중복 방지 및 이력 관리
+        - [ ] 5.3.3.1: schedules.db의 notification_history 테이블 활용한 중복 체크
+        - [ ] 5.3.3.2: 목표 해시값 기반 중복 방지 로직 (기존 `ai/memory/deduplicator.py` 패턴 참고)
+        - [ ] 5.3.3.3: JSON Lines 형식(`notification_log.jsonl`)으로 구조화된 로그 저장
 
 - [ ] **5.4: 스케줄러 통합 및 실행**
     - [ ] 5.4.1: `main.py` 수정: `ENABLE_SCHEDULER=true` 환경변수 시 백그라운드 스케줄러 시작 (기존 interface 선택 로직과 동일 패턴)
@@ -277,7 +276,7 @@ Angmini/
     - [ ] 5.4.5: 실패 처리 및 복구 전략 (기존 `ai/react_engine/safety_guard.py` 패턴 활용)
         - [ ] 5.4.5.1: GoalExecutor 실행 실패 시 재시도 정책 정의 (max_retries, backoff)
         - [ ] 5.4.5.2: 연속 실패 시 스케줄 일시 정지 및 관리자 알림
-        - [ ] 5.4.5.3: 실패 패턴을 기존 MemoryService에 저장하여 학습 데이터로 활용
+        - [ ] 5.4.5.3: 실패 패턴 기반 학습 시스템
 
 - [ ] **5.5: 환경변수 설정 및 문서화**
     - [ ] 5.5.1: `.env.example` 추가 (기존 환경변수 패턴 따라 구성):
