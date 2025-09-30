@@ -13,7 +13,7 @@ from ai.core.logger import get_logger
 from .memory_records import MemoryCategory, MemoryRecord, MemorySourceData
 
 
-CURATOR_MAX_OUTPUT_TOKENS = 4096
+CURATOR_MAX_OUTPUT_TOKENS = 8192
 
 
 class MemoryCurator:

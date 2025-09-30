@@ -180,7 +180,7 @@ class CascadedRetriever:
         llm_response = self._brain.generate_text(
             prompt,
             temperature=0.1,
-            max_output_tokens=800,
+            max_output_tokens=8000,
         )
         try:
             data = json.loads(llm_response.text)
