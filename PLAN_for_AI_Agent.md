@@ -140,36 +140,51 @@
 
 ## 🔶 Phase 4.5: Adaptive Memory Layer (2-3주)
 
-- [ ] **4.5.1: Memory Record 설계 및 추출 시점 정의**
-    - [ ] 4.5.1.1: 단일 Memory Record 스키마 정의 (요약 본문, 사용 도구, 사용자 의도, 성과 태그 등)
-    - [ ] 4.5.1.2: ExecutionContext 종료 직전 수집할 데이터 목록 확정 (사용자 입력, 계획, 도구 호출, 최종 응답 초안)
-    - [ ] 4.5.1.3: 저장 대상 선별 기준 정의 (신규 시나리오, 오류 해결, 사용자 선호 등)
+### 🧱 현재 메모리 서브시스템 구조 참고
+- `ai/memory/service.py`: MemoryService가 ExecutionContext 종료 시 파이프라인(`pipeline.py`, `retention_policy.py`, `memory_curator.py`)을 호출해 장기 기억을 저장.
+- `ai/memory/factory.py`: SQLite + FAISS + Qwen 임베딩을 묶어 `MemoryRepository`(`storage/repository.py`)를 생성하고, 현재 OpenMP 환경 변수도 설정.
+- `ai/memory/storage/repository.py`: `search()`가 임베딩 유사도 기반 상위 결과를 반환하며, `MemoryRecord`는 `memory_records.py`에 정의.
+- `mcp/tools/memory_tool.py`: MCP 인터페이스에서 MemoryRepository 검색 API를 노출하며 `search_experience` 등 엔드포인트를 제공.
+- `ai/react_engine/goal_executor.py`: 세션 시작 시 `_prefetch_relevant_memories()`가 MemoryService.repository를 직접 호출해 상위 기억을 가져와 ReAct 컨텍스트에 주입.
+- `ai/memory/prompts/` 폴더: curator 프롬프트가 정리돼 있으며, LLM 기반 보조 프롬프트를 추가하기 좋은 위치.
 
-- [ ] **4.5.2: Memory Curator 모듈 구현**
-    - [ ] 4.5.2.1: Curator LLM 프롬프트 설계 (핵심만 정리하는 요약 가이드)
-    - [ ] 4.5.2.2: ExecutionContext → Curator 모듈 파이프라인 구축 (최종 응답 전 동기 실행)
-    - [ ] 4.5.2.3: 중복 메모리 감지/병합 규칙 정의 및 1차 구현
+- [x] **4.5.1: Memory Record 설계 및 추출 시점 정의**
+    - [x] 4.5.1.1: 단일 Memory Record 스키마 정의 (요약 본문, 사용 도구, 사용자 의도, 성과 태그 등)
+    - [x] 4.5.1.2: ExecutionContext 종료 직전 수집할 데이터 목록 확정 (사용자 입력, 계획, 도구 호출, 최종 응답 초안)
+    - [x] 4.5.1.3: 저장 대상 선별 기준 정의 (신규 시나리오, 오류 해결, 사용자 선호 등)
 
-- [ ] **4.5.3: Qwen3-Embedding 기반 저장소 구성**
-    - [ ] 4.5.3.1: Qwen3-Embedding 0.6 호출 래퍼 구현 및 API 키 관리 규칙 수립
-    - [ ] 4.5.3.2: 메타데이터 저장(예: SQLite)과 벡터 인덱스(예: 로컬 FAISS) 병행 설계
-    - [ ] 4.5.3.3: 삽입·검색 공통 인터페이스 정의 (확장 가능하도록 추상화)
+- [x] **4.5.2: Memory Curator 모듈 구현**
+    - [x] 4.5.2.1: Curator LLM 프롬프트 설계 (핵심만 정리하는 요약 가이드)
+    - [x] 4.5.2.2: ExecutionContext → Curator 모듈 파이프라인 구축 (최종 응답 전 동기 실행)
+    - [x] 4.5.2.3: 중복 메모리 감지/병합 규칙 정의 및 1차 구현
 
-- [ ] **4.5.4: Memory MCP 도구 구현**
-    - [ ] 4.5.4.1: `mcp/tools/memory_tool.py`에서 `MemoryTool` 구현 (ToolBlueprint 상속)
-    - [ ] 4.5.4.2: 검색 엔드포인트 정의 (`search_experience`, `find_solution`, `get_tool_guidance`, `analyze_patterns`)
-    - [ ] 4.5.4.3: 쿼리 타입별 검색 우선순위 로직 (임베딩 유사도 + 메타 필터)
-    - [ ] 4.5.4.4: System Prompt에 MemoryTool 우선 사용 지침 추가 (ToolManager 구조 변경 없이)
+- [x] **4.5.3: Qwen3-Embedding 기반 저장소 구성**
+    - [x] 4.5.3.1: Qwen3-Embedding 0.6 호출 래퍼 구현 및 API 키 관리 규칙 수립
+    - [x] 4.5.3.2: 메타데이터 저장(예: SQLite)과 벡터 인덱스(예: 로컬 FAISS) 병행 설계
+    - [x] 4.5.3.3: 삽입·검색 공통 인터페이스 정의 (확장 가능하도록 추상화)
 
-- [ ] **4.5.5: ReAct Engine 통합**
-    - [ ] 4.5.5.1: `GoalExecutor`에 최종 메모리 생성 단계 연결 (최종 응답 전 Curator 호출)
-    - [ ] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
-    - [ ] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
+- [x] **4.5.4: Memory MCP 도구 구현**
+    - [x] 4.5.4.1: `mcp/tools/memory_tool.py`에서 `MemoryTool` 구현 (ToolBlueprint 상속)
+    - [x] 4.5.4.2: 검색 엔드포인트 정의 (`search_experience`, `find_solution`, `get_tool_guidance`, `analyze_patterns`)
+    - [x] 4.5.4.3: 쿼리 타입별 검색 우선순위 로직 (임베딩 유사도 + 메타 필터)
+    - [x] 4.5.4.4: System Prompt에 MemoryTool 우선 사용 지침 추가 (ToolManager 구조 변경 없이)
 
-- [ ] **4.5.6: 관찰 및 유지보수 체계**
-    - [ ] 4.5.6.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의
-    - [ ] 4.5.6.2: 임베딩 갱신/모델 교체 시나리오 문서화
-    - [ ] 4.5.6.3: 데이터 정리 및 개인정보 관리 정책 수립
+- [x] **4.5.5: ReAct Engine 통합**
+    - [x] 4.5.5.1: `GoalExecutor`에 최종 메모리 생성 단계 연결 (최종 응답 전 Curator 호출)
+    - [x] 4.5.5.2: 기억 검색 결과를 ExecutionContext에 주입하는 헬퍼 구현
+    - [x] 4.5.5.3: 재시도/오류 흐름에서 MemoryTool을 활용하는 프롬프트 가이드 정비
+
+- [x] **4.5.6: Cascaded LLM-Filter Retrieval 실험**
+    - [x] 4.5.6.1: `ai/memory/prompts/`에 LLM 필터링 프롬프트 초안을 추가하고, `ai/memory/cascaded_retriever.py`(신규)에서 사용할 few-shot 예시/판정 규칙 정의
+    - [x] 4.5.6.2: `ai/memory/cascaded_retriever.py`에서 `CascadedRetriever` 클래스를 구현해 ① `MemoryRepository.search()`로 1차 상위 5개 조회 → ② LLM 필터(`AIBrain`) 호출 → ③ 관련 결과로부터 키워드/후속 쿼리를 생성해 재임베딩/재검색을 반복 (최대 N회, 가중치 조합 포함)
+    - [x] 4.5.6.3: 동일 기억 재발견 방지를 위해 `CascadedRetriever` 내부에 조회 ID 캐시(set)와 재귀 깊이 제한, score 하한선, "신규 결과 없음" 카운터를 적용하고, 구성 옵션을 `Config` 혹은 `MemoryService`에서 주입 가능하도록 설계
+    - [x] 4.5.6.4: `CascadedRetriever`가 각 반복에서 수집한 메트릭(신규 기억 수, LLM keep ratio, 누적 지연)을 `ai/core/logger`를 통해 로그/테레메트리로 남기고, `MemoryService` 또는 `GoalExecutor._prefetch_relevant_memories()`에서 결과 요약을 기록
+    - [x] 4.5.6.5: 최종 반환 단계에서 `ai/react_engine/goal_executor.py`를 수정해 CascadedRetriever의 결과를 기존 scratchpad 주입 로직과 통합하고, 중복 제거·요약(`memory_records` 기반) 후 ReAct 컨텍스트에 전달되도록 후처리 함수를 추가
+
+- [x] **4.5.7: 관찰 및 유지보수 체계**
+    - [x] 4.5.7.1: 메모리 저장/조회 성공률 및 응답 품질 모니터링 항목 정의 (MemoryMetrics로 캡처/조회 hit-rate, 지연시간, 중복 비율 추적)
+    - [x] 4.5.7.2: 임베딩 갱신/모델 교체 시나리오 문서화 (`docs/memory_maintenance.md`에 단계별 절차 정리)
+    - [x] 4.5.7.3: 데이터 정리 및 개인정보 관리 정책 수립 (보존 주기/익명화 가이드 문서화)
 
 ### 🎯 **Phase 4.5 핵심 목표**
 - 대화 종료 시 자동으로 핵심 기억을 생성하고, 적절한 임베딩/메타데이터와 함께 보존
@@ -183,20 +198,131 @@
 
 ---
 
-## 🟢 Phase 5: 통합, 테스트 및 배포 (1-2주)
+## 🔔 Phase 5: Proactive Notification System (2-3주)
 
-- [ ] **5.1: 통합 테스트**
-    - [ ] 5.1.1: `tests/` 폴더 내에 각 모듈별 단위 테스트 코드 작성 (`pytest`)
-    - [ ] 5.1.2: `test_integration.py`: 복잡한 시나리오(여러 도구 사용)에 대한 End-to-End 테스트 작성
-    - [ ] 5.1.3: `pytest-mock`을 사용하여 외부 API 호출 모킹
+### 🎯 **핵심 목표**
+수동적으로 사용자 요청을 기다리는 대신, **주기적으로 일정과 할일을 체크**하고 **사용자에게 먼저 알림**을 보내는 능동적 AI 비서로 진화
 
-- [ ] **5.2: 문서화**
-    - [ ] 5.2.1: `docs/PLAN_for_Users.md`: 사용자를 위한 쉬운 버전의 개발 계획서 작성 (Phase 1에서 조기 완성)
-    - [ ] 5.2.2: `docs/API.md`: 각 도구의 사용법과 API 명세 작성
-    - [ ] 5.2.3: `docs/SETUP.md`: 프로젝트 설치 및 설정 가이드 작성
-    - [ ] 5.2.4: `docs/USAGE.md`: 사용법 및 예시 명령어 작성
+### 🏗️ **기존 아키텍처 활용 방안**
+현재 프로젝트는 잘 구조화된 아키텍처를 가지고 있으므로, 기존 컴포넌트를 최대한 재사용:
+- **기존 ToolManager**: NotionTool, AppleTool 등 이미 등록된 도구들 활용
+- **기존 GoalExecutor**: "일정 체크 후 알림 생성" 같은 목표를 실행하는 엔진으로 재사용
+- **기존 Interface 레이어**: CLI, Discord Bot에 알림 발송 기능만 추가
+- **기존 MemoryService**: 사용자 선호도 학습 및 알림 패턴 분석에 활용
 
-- [ ] **5.3: 배포 준비**
-    - [ ] 5.3.1: `Dockerfile` 작성 (선택적)
-    - [ ] 5.3.2: macOS에서 `launchd`를 사용하여 백그라운드 서비스로 등록하는 스크립트 작성
-    - [ ] 5.3.3: 최종 `README.md` 업데이트
+### 📂 **최소한으로 추가될 파일 구조**
+```
+Angmini/
+├── ai/
+│   └── scheduler/              # 스케줄링 시스템 (신규)
+│       ├── __init__.py
+│       ├── scheduler_service.py    # 백그라운드 스케줄러
+│       ├── proactive_goals.py      # 정기 실행할 목표들 정의
+│       └── notification_config.py  # 알림 설정 관리
+├── interface/
+│   └── notification_sender.py  # 기존 인터페이스에 알림 발송 기능 추가
+└── data/
+    └── scheduler/              # 스케줄 데이터 (신규)
+        ├── schedules.db        # 간단한 스케줄 정보
+        └── notification_log.txt # 알림 이력 로그
+```
+
+- [ ] **5.1: 백그라운드 스케줄러 구축**
+    - [ ] 5.1.1: `ai/scheduler/scheduler_service.py`: APScheduler 활용한 백그라운드 스케줄러 (기존 GoalExecutorFactory 재사용)
+        - [ ] 5.1.1.1: 동시 실행 방지를 위한 threading.Lock 적용
+        - [ ] 5.1.1.2: 실행 중인 작업 추적을 위한 상태 관리 추가
+        - [ ] 5.1.1.3: 타임아웃 설정으로 장시간 실행 방지 (MAX_EXECUTION_TIME)
+    - [ ] 5.1.2: `ai/scheduler/notification_config.py`: 환경변수 기반 알림 설정
+        - [ ] 5.1.2.1: QUIET_HOURS_START/END 파싱 및 시간대 변환 (기존 `ai/core/config.py` 패턴 활용)
+        - [ ] 5.1.2.2: 긴급 알림 예외 처리 (HIGH priority는 조용한 시간에도 발송)
+        - [ ] 5.1.2.3: 지연된 알림 큐잉 시스템 (조용한 시간 종료 후 일괄 발송)
+    - [ ] 5.1.3: `data/scheduler/schedules.db`: SQLite 스키마 확장
+        - [ ] 5.1.3.1: schedules 테이블 (id, goal_hash, next_run, last_run, status)
+        - [ ] 5.1.3.2: notification_history 테이블 (id, goal_hash, timestamp, success, channel)
+
+- [ ] **5.2: 정기 실행 목표 정의**
+    - [ ] 5.2.1: `ai/scheduler/proactive_goals.py`: 구조화된 목표 관리 시스템
+        - [ ] 5.2.1.1: ProactiveGoal 데이터클래스 정의 (goal_text, priority, frequency, condition, max_retries)
+        - [ ] 5.2.1.2: 우선순위별 실행 큐 관리 (HIGH > MEDIUM > LOW, 기존 `ai/react_engine/models.py` 패턴 활용)
+        - [ ] 5.2.1.3: 조건부 실행 함수 지원 (시간대, 이전 실행 결과 기반)
+        - [ ] 5.2.1.4: 기본 목표들 정의:
+            - "오늘 마감인 Notion 할일 확인해서 알림 메시지 생성" (HIGH priority)
+            - "1시간 후 캘린더 일정 확인해서 준비 알림 생성" (MEDIUM priority)
+            - "미완료 중요 작업들 점검해서 현황 알림 생성" (LOW priority)
+    - [ ] 5.2.2: GoalExecutor가 이해할 수 있는 자연어 목표로 표현 (기존 시스템 그대로 활용)
+    - [ ] 5.2.3: MemoryService 통합 강화
+        - [ ] 5.2.3.1: 기존 `MemoryService.repository.search()` 활용한 패턴 학습 구현
+        - [ ] 5.2.3.2: 알림 응답 패턴 학습 시스템
+        - [ ] 5.2.3.3: 최적 알림 시간대 자동 조정 기능
+        - [ ] 5.2.3.4: 반복 작업 패턴 감지 및 선제적 알림 시스템
+
+- [ ] **5.3: 알림 발송 인터페이스 확장**
+    - [ ] 5.3.1: `interface/notification_sender.py`: 기존 인터페이스 확장 (기존 `interface/cli.py`, `interface/discord_bot.py` 패턴 활용)
+    - [ ] 5.3.2: Discord 알림: 기존 봇 클라이언트로 사용자에게 DM 발송 (기존 `GoalExecutorFactory` 재사용)
+    - [ ] 5.3.3: 알림 중복 방지 및 이력 관리
+        - [ ] 5.3.3.1: schedules.db의 notification_history 테이블 활용한 중복 체크
+        - [ ] 5.3.3.2: 목표 해시값 기반 중복 방지 로직 (기존 `ai/memory/deduplicator.py` 패턴 참고)
+        - [ ] 5.3.3.3: JSON Lines 형식(`notification_log.jsonl`)으로 구조화된 로그 저장
+
+- [ ] **5.4: 스케줄러 통합 및 실행**
+    - [ ] 5.4.1: `main.py` 수정: `ENABLE_SCHEDULER=true` 환경변수 시 백그라운드 스케줄러 시작 (기존 interface 선택 로직과 동일 패턴)
+    - [ ] 5.4.2: 스케줄러는 별도 스레드에서 실행, 기존 인터페이스와 독립적 동작
+    - [ ] 5.4.3: GoalExecutor 통합 실행
+        - [ ] 5.4.3.1: 기존 `GoalExecutorFactory.create().run(proactive_goal)` 호출
+        - [ ] 5.4.3.2: 동시 실행 방지를 위한 threading.Lock 적용
+        - [ ] 5.4.3.3: 실행 중인 작업 추적을 위한 상태 관리 추가
+        - [ ] 5.4.3.4: 타임아웃 설정으로 장시간 실행 방지 (MAX_EXECUTION_TIME)
+    - [ ] 5.4.4: 실행 결과를 `notification_sender`로 전달해 활성 인터페이스에 알림 발송
+    - [ ] 5.4.5: 실패 처리 및 복구 전략 (기존 `ai/react_engine/safety_guard.py` 패턴 활용)
+        - [ ] 5.4.5.1: GoalExecutor 실행 실패 시 재시도 정책 정의 (max_retries, backoff)
+        - [ ] 5.4.5.2: 연속 실패 시 스케줄 일시 정지 및 관리자 알림
+        - [ ] 5.4.5.3: 실패 패턴 기반 학습 시스템
+
+- [ ] **5.5: 환경변수 설정 및 문서화**
+    - [ ] 5.5.1: `.env.example` 추가 (기존 환경변수 패턴 따라 구성):
+        - `ENABLE_SCHEDULER`, `CHECK_INTERVAL_MINUTES`, `NOTIFICATION_CHANNELS`
+        - `QUIET_HOURS_START`, `QUIET_HOURS_END`, `SCHEDULER_MODE`
+    - [ ] 5.5.2: `docs/PROACTIVE_NOTIFICATIONS.md`: 알림 시스템 사용법 및 설정 가이드 작성
+    - [ ] 5.5.3: 기존 `docs/USAGE.md`에 스케줄러 활성화 방법 추가
+    - [ ] 5.5.4: 점진적 활성화 전략 (기존 `ai/core/config.py` 설정 패턴 활용)
+        - [ ] 5.5.4.1: `SCHEDULER_MODE=dry-run` 옵션 (실행만 하고 알림 발송 안함)
+        - [ ] 5.5.4.2: `SCHEDULER_MODE=verbose` 옵션 (상세 로그 출력)
+        - [ ] 5.5.4.3: `SCHEDULER_MODE=production` 옵션 (정상 운영 모드)
+
+- [ ] **5.6: 모니터링 및 성능 측정** (기존 `ai/memory/metrics.py` 패턴 활용)
+    - [ ] 5.6.1: 스케줄러 실행 메트릭스 수집 (실행 횟수, 성공률, 평균 실행 시간)
+    - [ ] 5.6.2: 알림 전송 성공률 및 응답률 추적
+    - [ ] 5.6.3: 기존 `ai/core/logger`를 통한 구조화된 로그 출력
+    - [ ] 5.6.4: 간단한 대시보드 뷰 (`scheduler status` 명령) 구현
+
+- [ ] **5.7: 테스트 및 검증** (기존 `tests/` 폴더 구조 활용)
+    - [ ] 5.7.1: 스케줄러 단위 테스트 작성 (`tests/test_scheduler_service.py`)
+    - [ ] 5.7.2: 시간 기반 테스트를 위한 Mock 시계 구현 (기존 테스트 패턴 참고)
+    - [ ] 5.7.3: 알림 발송 시뮬레이션 테스트
+    - [ ] 5.7.4: 부하 테스트 시나리오 (다중 스케줄 동시 실행)
+
+### 🔧 **구현 핵심 포인트**
+1. **기존 시스템 재사용**: 새로운 복잡한 시스템을 만들지 않고, 현재의 GoalExecutor + ToolManager 구조를 그대로 활용
+2. **최소 침습적 변경**: main.py와 interface 레이어에만 최소한의 변경 적용
+3. **점진적 확장**: 기본 기능부터 구현 후 고급 기능(패턴 학습, 우선순위 등)은 단계적 추가
+4. **기존 도구 활용**: NotionTool, AppleTool, MemoryTool 등 이미 검증된 도구들을 그대로 사용
+
+---
+
+## 🟢 Phase 6: 통합, 테스트 및 배포 (1-2주)
+
+- [ ] **6.1: 통합 테스트**
+    - [ ] 6.1.1: `tests/` 폴더 내에 각 모듈별 단위 테스트 코드 작성 (`pytest`)
+    - [ ] 6.1.2: `test_integration.py`: 복잡한 시나리오(여러 도구 사용)에 대한 End-to-End 테스트 작성
+    - [ ] 6.1.3: `pytest-mock`을 사용하여 외부 API 호출 모킹
+
+- [ ] **6.2: 문서화**
+    - [ ] 6.2.1: `docs/PLAN_for_Users.md`: 사용자를 위한 쉬운 버전의 개발 계획서 작성 (Phase 1에서 조기 완성)
+    - [ ] 6.2.2: `docs/API.md`: 각 도구의 사용법과 API 명세 작성
+    - [ ] 6.2.3: `docs/SETUP.md`: 프로젝트 설치 및 설정 가이드 작성
+    - [ ] 6.2.4: `docs/USAGE.md`: 사용법 및 예시 명령어 작성
+
+- [ ] **6.3: 배포 준비**
+    - [ ] 6.3.1: `Dockerfile` 작성 (선택적)
+    - [ ] 6.3.2: macOS에서 `launchd`를 사용하여 백그라운드 서비스로 등록하는 스크립트 작성
+    - [ ] 6.3.3: 최종 `README.md` 업데이트

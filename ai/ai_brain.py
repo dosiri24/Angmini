@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, Mapping, Optional, Sequence
 
 try:
     import google.generativeai as genai
@@ -24,6 +24,14 @@ class PromptMessage:
 
     role: str
     content: str
+
+
+@dataclass(frozen=True)
+class LLMResponse:
+    """LLM completion result that includes token usage metadata."""
+
+    text: str
+    metadata: Dict[str, Any]
 
 
 class AIBrain:
@@ -54,7 +62,7 @@ class AIBrain:
         history: Optional[Sequence[PromptMessage]] = None,
         temperature: float = 0.7,
         max_output_tokens: Optional[int] = None,
-    ) -> str:
+    ) -> LLMResponse:
         """Request a completion from Gemini using an optional conversation history."""
         contents = self._build_contents(prompt, history)
         try:
@@ -69,19 +77,35 @@ class AIBrain:
             self._logger.error("Gemini API 요청 실패: %s", exc, exc_info=True)
             raise EngineError(f"Gemini API 요청이 실패했습니다: {exc}") from exc
 
-        text = self._pick_primary_text(response)
+        response_metadata = self._extract_response_metadata(response)
+        response_metadata.update(
+            {
+                "prompt_length": len(prompt),
+                "max_output_tokens": max_output_tokens,
+                "temperature": temperature,
+            }
+        )
+
+        try:
+            text = self._pick_primary_text(response)
+        except ValueError as exc:  # pragma: no cover - surface diagnostics before re-raising
+            self._logger.warning(
+                "Gemini 응답에서 텍스트 추출에 실패했습니다 (metadata=%s)",
+                response_metadata,
+            )
+            raise
+
         if not text:
             feedback = getattr(response, "prompt_feedback", None)
             safety = getattr(feedback, "safety_ratings", None) if feedback else None
             self._logger.warning(
-                "Gemini 응답이 비어 있습니다.",
-                extra={
-                    "prompt_feedback": str(feedback) if feedback else None,
-                    "safety_ratings": str(safety) if safety else None,
-                },
+                "Gemini 응답이 비어 있습니다 (metadata=%s, feedback=%s, safety=%s)",
+                response_metadata,
+                str(feedback) if feedback else None,
+                str(safety) if safety else None,
             )
             raise EngineError("Gemini API가 비어있는 응답을 반환했습니다.")
-        return text
+        return LLMResponse(text=text, metadata=response_metadata)
 
     def _configure_client(self, api_key: str) -> None:
         genai.configure(api_key=api_key)
@@ -123,6 +147,40 @@ class AIBrain:
                 if accumulated_parts:
                     return "".join(accumulated_parts)
         return ""
+
+    def _extract_response_metadata(self, response: Any) -> Dict[str, Any]:
+        metadata: Dict[str, Any] = {}
+
+        candidates = getattr(response, "candidates", None)
+        if candidates:
+            primary = candidates[0]
+            finish_reason = getattr(primary, "finish_reason", None)
+            if finish_reason is not None:
+                metadata["finish_reason"] = str(finish_reason)
+            safety = getattr(primary, "safety_ratings", None)
+            if safety:
+                metadata["safety_ratings"] = str(safety)
+            usage = getattr(primary, "usage_metadata", None)
+            if usage:
+                metadata["usage_metadata"] = {
+                    "prompt_token_count": getattr(usage, "prompt_token_count", None),
+                    "candidates_token_count": getattr(usage, "candidates_token_count", None),
+                    "total_token_count": getattr(usage, "total_token_count", None),
+                }
+
+        top_level_usage = getattr(response, "usage_metadata", None)
+        if top_level_usage is not None:
+            usage_dict = metadata.setdefault("usage_metadata", {})
+            for key in ("prompt_token_count", "candidates_token_count", "total_token_count"):
+                value = getattr(top_level_usage, key, None)
+                if value is not None:
+                    usage_dict[key] = value
+
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        if prompt_feedback:
+            metadata["prompt_feedback"] = str(prompt_feedback)
+
+        return metadata
 
     @staticmethod
     def _mask_key(key: str) -> str:

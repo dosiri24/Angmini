@@ -14,6 +14,7 @@ from ai.react_engine.models import StepCompletedEvent
 from ai.react_engine.runtime import GoalExecutorFactory
 from mcp import create_default_tool_manager
 from .summary import format_execution_summary
+from .streaming import stream_lines, stream_text
 
 _EXIT_COMMANDS: tuple[str, ...] = ("exit", "quit", "종료")
 
@@ -97,18 +98,26 @@ def _interactive_loop(
             continue
 
         root_level = logging.getLogger().getEffectiveLevel()
-        if root_level <= logging.WARNING:
+        printed_summary = root_level <= logging.WARNING
+        if printed_summary:
             print(format_execution_summary(context))
-            printed_summary = True
-        else:
-            printed_summary = False
+
+        if context.scratchpad:
+            if printed_summary:
+                print()
+            print("assistant 생각:")
+            stream_lines(context.scratchpad, prefix="  • ")
 
         message = _extract_direct_message(context)
         if message:
-            if printed_summary:
+            if context.scratchpad or printed_summary:
                 print()
-            print(f"assistant 응답: {message}")
-
+            print("assistant 응답: ", end="", flush=True)
+            stream_text(message)
+        elif context.metadata.get("final_message"):
+            # Already streamed via metadata decoration, no extra output needed
+            pass
+        
         executor_factory.record_turn(user_input, message)
 
 

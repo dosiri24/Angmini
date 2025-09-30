@@ -37,3 +37,7 @@ external/apple-mcp/node_modules/
 external/apple-mcp/dist/
 external/apple-mcp/.env
 external/apple-mcp/bun.lockb
+
+# Memory data
+data/memory/*
+tests/stream.py

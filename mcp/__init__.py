@@ -6,11 +6,12 @@ import platform
 
 from .tool_blueprint import ToolBlueprint, ToolResult  # noqa: F401
 from .tool_manager import ToolManager  # noqa: F401
-from .tools import AppleTool, FileTool, NotionTool  # noqa: F401
+from .tools import AppleTool, FileTool, MemoryTool, NotionTool  # noqa: F401
 
 __all__ = [
     "AppleTool",
     "FileTool",
+    "MemoryTool",
     "NotionTool",
     "ToolBlueprint",
     "ToolResult",

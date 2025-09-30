@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from ai.ai_brain import AIBrain
@@ -12,6 +11,7 @@ from mcp.tool_manager import ToolManager
 
 from .conversation_memory import ConversationMemory
 from .models import ExecutionContext, PlanStep, StepCompletedEvent, StepOutcome, StepResult
+from .result_formatter import summarize_step_result
 
 
 class StepExecutor:
@@ -93,7 +93,7 @@ class StepExecutor:
         )
         self._logger.debug("Generating direct response for step %s", step.id)
         try:
-            message = self._brain.generate_text(prompt, temperature=0.6)
+            llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
             self._logger.warning("대화 응답 생성 실패: %s", exc)
             return StepResult(
@@ -102,6 +102,9 @@ class StepExecutor:
                 error_reason=str(exc),
                 attempt=attempt,
             )
+
+        context.record_token_usage(llm_response.metadata, category="final")
+        message = llm_response.text
 
         self._logger.info("Step %s 대화 응답 완료", step.id)
         return StepResult(
@@ -130,6 +133,7 @@ class StepExecutor:
             .replace("{{goal}}", context.goal)
             .replace("{{step_description}}", step_description)
             .replace("{{plan_checklist}}", plan)
+            .replace("{{plan_results}}", context.plan_results_digest())
             .replace("{{fail_log}}", fail_log)
             .replace("{{notes}}", notes)
             .replace("{{latest_data}}", latest_data or "(없음)")
@@ -175,10 +179,13 @@ class StepExecutor:
         )
         self._logger.debug("Generating final response summary")
         try:
-            return self._brain.generate_text(prompt, temperature=0.6)
+            llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
             self._logger.warning("최종 응답 생성 실패: %s", exc)
             return None
+
+        context.record_token_usage(llm_response.metadata, category="final")
+        return llm_response.text
 
     def _latest_event(self, context: ExecutionContext) -> StepCompletedEvent | None:
         for event in reversed(context.events):
@@ -192,21 +199,18 @@ class StepExecutor:
             return "(없음)"
 
         description = None
+        matched_step: PlanStep | None = None
         for step in context.plan_steps:
             if step.id == event.step_id:
                 description = step.description
+                matched_step = step
                 break
 
-        data_text = "(데이터 없음)"
-        if event.data is not None:
-            try:
-                data_text = json.dumps(event.data, ensure_ascii=False, indent=2)
-            except TypeError:
-                data_text = str(event.data)
+        summary = summarize_step_result(matched_step, event.data)
 
         if description:
-            return f"최근 완료된 단계: #{event.step_id} {description}\n{data_text}"
-        return data_text
+            return f"최근 완료된 단계: #{event.step_id} {description}\n결과: {summary}"
+        return summary
 
     def _summarise_event(
         self,
@@ -216,20 +220,15 @@ class StepExecutor:
         if event is None:
             return "(최근 수행 데이터가 없습니다)", "마지막 단계 정보를 찾을 수 없습니다"
 
-        data_text = "(데이터 없음)"
-        if event.data is not None:
-            try:
-                data_text = json.dumps(event.data, ensure_ascii=False, indent=2)
-            except TypeError:
-                data_text = str(event.data)
-
-        description = "최근 완료된 단계"
+        matched_step: PlanStep | None = None
         for step in context.plan_steps:
             if step.id == event.step_id:
-                description = step.description
+                matched_step = step
                 break
 
-        return data_text, description
+        description = matched_step.description if matched_step else "최근 완료된 단계"
+        summary = summarize_step_result(matched_step, event.data)
+        return summary, description
 
     def _classify_tool_error(self, message: str) -> tuple[StepOutcome, str]:
         lowered = message.lower()

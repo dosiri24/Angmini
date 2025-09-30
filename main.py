@@ -19,6 +19,7 @@ _INTERFACE_ENTRYPOINTS: Mapping[str, tuple[str, str]] = {
 }
 
 
+
 def main() -> None:
     """Configure the application and dispatch to the selected interface."""
     try:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 
 class PlanStepStatus(str, Enum):
@@ -135,6 +135,9 @@ class ExecutionContext:
     attempt_counts: Dict[int, int] = field(default_factory=dict)
     step_started_at: Dict[int, datetime] = field(default_factory=dict)
     events: List[PlanEvent] = field(default_factory=list)
+    step_outcomes: Dict[int, str] = field(default_factory=dict)
+    thinking_tokens: int = 0
+    response_tokens: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
 
     def record_event(self, event: PlanEvent) -> None:
@@ -187,8 +190,70 @@ class ExecutionContext:
         return "\n".join(entry.to_prompt_fragment() for entry in entries)
 
     def append_scratch(self, note: str) -> None:
-        self.scratchpad.append(note)
+        stripped = note.strip()
+        if not stripped:
+            return
+        self.scratchpad.append(stripped)
 
     def final_scratchpad_digest(self) -> str:
         """Return a newline-joined summary of all scratch notes."""
         return "\n".join(self.scratchpad)
+
+    def record_step_outcome(self, step_id: int, summary: str) -> None:
+        """Store a short narrative about the result of a completed step."""
+        if summary:
+            self.step_outcomes[step_id] = summary.strip()
+        else:
+            self.step_outcomes[step_id] = ""
+
+    def plan_results_digest(self) -> str:
+        """Return a short digest describing outcomes of completed steps."""
+        lines: List[str] = []
+        for step in self.plan_steps:
+            if step.status != PlanStepStatus.DONE:
+                continue
+            outcome = self.step_outcomes.get(step.id)
+            if outcome:
+                lines.append(f"#{step.id} {outcome}")
+            else:
+                lines.append(f"#{step.id} {step.description} 완료")
+
+        if not lines:
+            return "(완료된 단계 정보 없음)"
+        return "\n".join(lines)
+
+    def record_token_usage(self, usage: Mapping[str, Any], *, category: str) -> None:
+        if not isinstance(usage, Mapping):
+            return
+
+        usage_metadata = usage.get("usage_metadata")
+        if not isinstance(usage_metadata, Mapping):
+            usage_metadata = {}
+
+        total_tokens = int((usage_metadata.get("total_token_count") or 0) or 0)
+        prompt_tokens = int((usage_metadata.get("prompt_token_count") or 0) or 0)
+        candidate_tokens = int((usage_metadata.get("candidates_token_count") or 0) or 0)
+
+        if total_tokens == 0 and (prompt_tokens or candidate_tokens):
+            total_tokens = prompt_tokens + candidate_tokens
+
+        token_stats = self.metadata.setdefault(
+            "token_usage",
+            {
+                "total_tokens": 0,
+                "prompt_tokens": 0,
+                "response_tokens": 0,
+                "thinking_tokens": 0,
+            },
+        )
+
+        token_stats["total_tokens"] += total_tokens
+        token_stats["prompt_tokens"] += prompt_tokens
+
+        if category == "final":
+            response_tokens = candidate_tokens or max(total_tokens - prompt_tokens, 0)
+            self.response_tokens += response_tokens
+            token_stats["response_tokens"] += response_tokens
+        else:
+            self.thinking_tokens += total_tokens
+            token_stats["thinking_tokens"] += total_tokens
