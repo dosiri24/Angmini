@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest --collect-only)",
+      "Read(//Users/taesooa/.local/bin/**)",
+      "Read(//Users/taesooa/**)",
+      "Bash(codex:*)",
+      "Read(//usr/local/lib/node_modules/@openai/codex/bin/**)",
+      "Bash(env)",
+      "Bash(cat:*)",
+      "Bash(claude mcp add codex:*)",
+      "Bash(claude mcp:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
