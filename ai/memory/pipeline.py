@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from ai.react_engine.models import ExecutionContext
+from ai.shared.models import ExecutionContext
 
 from .deduplicator import MemoryDeduplicator
 from .memory_curator import MemoryCurator

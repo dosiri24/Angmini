@@ -4,8 +4,9 @@ mcp/crewai_adapters/file_crewai_tool.py
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from mcp.tools.file_tool import FileTool, ToolResult
+from ai.core.logger import get_logger
 
 
 class FileToolInput(BaseModel):
@@ -21,8 +22,11 @@ class FileCrewAITool(BaseTool):
     description: str = "파일 읽기/쓰기, 디렉토리 목록, 파일 검색을 수행합니다."
     args_schema: Type[BaseModel] = FileToolInput
 
-    def __init__(self):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
         self._file_tool = FileTool()
 
     def _run(
@@ -34,6 +38,14 @@ class FileCrewAITool(BaseTool):
         **kwargs: Any
     ) -> str:
         """도구 실행"""
+        # 입력 파라미터 상세 로깅
+        params_log = f"operation={operation}, path={path}"
+        if content:
+            params_log += f", content={content[:50]}..." if len(content) > 50 else f", content={content}"
+        if pattern:
+            params_log += f", pattern={pattern}"
+        self._logger.info(f"🔧 [FileTool] 실행 - {params_log}")
+
         # FileTool 호출
         params = {"operation": operation, "path": path}
         if content is not None:
@@ -43,6 +55,10 @@ class FileCrewAITool(BaseTool):
 
         try:
             result: ToolResult = self._file_tool(**params)
+            if result.success:
+                self._logger.info(f"✅ [FileTool] 성공")
+            else:
+                self._logger.warning(f"❌ [FileTool] 실패: {result.error}")
 
             # 결과를 문자열로 변환
             if result.success:

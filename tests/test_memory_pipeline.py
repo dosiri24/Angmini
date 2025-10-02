@@ -12,7 +12,7 @@ from ai.memory.pipeline import MemoryPipeline
 from ai.memory.retention_policy import MemoryRetentionPolicy
 from ai.memory.snapshot_extractor import SnapshotExtractor
 from ai.memory.memory_records import MemoryCategory, MemoryRecord
-from ai.react_engine.models import (
+from ai.shared.models import (
     ExecutionContext,
     FailureLogEntry,
     PlanStep,

@@ -13,7 +13,7 @@ from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
 from ai.memory.factory import create_memory_service
 from ai.ai_brain import AIBrain
-from crew import AngminiCrew
+from ai.crew import AngminiCrew
 from .streaming import stream_lines, stream_text
 
 _EXIT_COMMANDS: tuple[str, ...] = ("exit", "quit", "종료")
@@ -24,8 +24,13 @@ def run(config: Config) -> None:
     # 불필요한 로그 억제
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
-    logging.getLogger("crewai").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # CrewAI 로그 레벨 설정 (DEBUG 모드일 때는 INFO, 아니면 WARNING)
+    if config.log_level == "DEBUG":
+        logging.getLogger("crewai").setLevel(logging.INFO)
+    else:
+        logging.getLogger("crewai").setLevel(logging.WARNING)
 
     # CrewAI Rich 출력 억제
     import os
@@ -120,6 +125,9 @@ def _interactive_loop(
 
         if user_input.lower() in normalized:
             break
+
+        # 사용자 입력 로그 기록
+        logger.info(f"사용자 입력: {user_input}")
 
         try:
             # 스트리밍 효과로 "생각 중" 표시

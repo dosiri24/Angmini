@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Angmini** is a personal AI assistant built on Google Gemini using the ReAct (Reasoning and Acting) pattern. It features a multi-interface system (CLI, Discord), extensible MCP tool ecosystem, and an intelligent long-term memory system with vector-based semantic search.
+**Angmini** is a personal AI assistant built on Google Gemini using the CrewAI multi-agent framework. It features specialized agents that collaborate through hierarchical processes, an extensible MCP tool ecosystem, and an intelligent long-term memory system with vector-based semantic search.
 
 ## Commands
 
@@ -14,8 +14,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Run the application (uses DEFAULT_INTERFACE from .env)
 python main.py
 
+# Run with DEBUG mode (shows CrewAI verbose output)
+LOG_LEVEL=DEBUG python main.py
+
 # Run with virtual environment
-python -m pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 python main.py
 
 # Run tests (pytest must be installed)
@@ -48,51 +53,66 @@ The following rules must be followed when working on this project:
 - **Prohibition:** Never alter the architecture or design without explicit user approval.
 
 ### 2. Design for Extensibility (Rule 1)
-- **Guideline:** Design the system to minimize code modifications when adding new components like Tools or LLM models. Actively use extension points such as `ToolRegistry`.
+- **Guideline:** Design the system to minimize code modifications when adding new components. Use extension points like `AgentFactory` and `ToolRegistry`.
 
 ### 3. Explicit Failure Handling (Rule 2)
-- **Guideline:** When a failure occurs (e.g., API connection error), do not mask it with mock data or fallback logic. Instead, raise an explicit `Error`.
-- **Objective:** To enable immediate identification and resolution of the root cause.
+- **Guideline:** When a failure occurs (e.g., API connection error), raise an explicit error instead of masking it.
+- **Objective:** Enable immediate identification and resolution of the root cause.
 
 ### 4. Root Cause Resolution (Rule 3)
-- **Guideline:** Do not implement temporary workarounds for specific examples provided by the user (e.g., patching a prompt to fix a single notification issue).
-- **Objective:** Implement robust, structural solutions that prevent the recurrence of similar problems.
+- **Guideline:** Implement robust, structural solutions that prevent problem recurrence, not temporary workarounds.
 
 ### 5. Clear and Detailed Comments (Rule 4)
-- **Guideline:** Write comments that focus on the **"why"** behind the code, not just the "what." Document complex logic and key design decisions.
-- **Objective:** To ensure the code's intent is immediately understandable to future developers (including yourself).
+- **Guideline:** Write comments that focus on the **"why"** behind the code, not just the "what."
+- **Objective:** Ensure the code's intent is immediately understandable to future developers.
 
 ### 6. User-Friendly Communication (Rule 5)
-- **Guideline:** Minimize technical jargon. Use analogies and simple terms to explain progress and technical concepts.
-- **Objective:** To help the user understand the development process intuitively, regardless of their technical background.
+- **Guideline:** Minimize technical jargon. Use analogies and simple terms to explain progress.
+
+### 7. 100% LLM-Based Decision Making (Rule 6)
+- **Guideline:** **STRICTLY PROHIBITED**: Keyword parsing or pattern matching for user intent analysis or agent selection.
+- **Required Approach**: Use LLM's natural language understanding exclusively for all decision making.
+- **Examples**:
+  - ❌ **WRONG**: `if "파일" in user_request or "file" in user_request.lower(): select FileAgent`
+  - ❌ **WRONG**: `action_words = ["조회", "목록", ...]; if any(word in request): return "task_request"`
+  - ✅ **CORRECT**: Let PlannerAgent's LLM analyze user request naturally and delegate to appropriate worker
+- **Rationale**: Keyword parsing is fragile, non-extensible, and contradicts the LLM-based architecture. CrewAI's hierarchical delegation with proper prompts provides superior flexibility and accuracy.
 
 ## Architecture & Design Principles
 
-### Core Execution Flow
+### Core Execution Flow (CrewAI v2.0)
 
 1. **Entry Point** (`main.py`): Loads config, dispatches to interface based on `DEFAULT_INTERFACE` env var
 2. **Interface Layer** (`interface/`): CLI or Discord bot receives user input
-3. **GoalExecutor** (`ai/react_engine/goal_executor.py`):
-   - Orchestrates ReAct loop
-   - Calls `_update_plan()` to generate JSON plan via LLM
-   - Executes steps via `StepExecutor`
-   - Handles failures via `PlanningEngine` and `LoopDetector`
-4. **ToolManager** (`mcp/tool_manager.py`): Routes tool calls to registered implementations
-5. **Memory System**: Captures execution context, stores via `MemoryService`, retrieves via `CascadedRetriever`
+3. **AngminiCrew** (`crew/crew_config.py`):
+   - Initializes PlannerAgent (Manager) and 4 worker agents
+   - Creates Task objects via `TaskFactory`
+   - Executes Crew with Hierarchical or Sequential process
+4. **Agent System** (`agents/`):
+   - **PlannerAgent**: Manager role, delegates tasks to specialists
+   - **FileAgent**: File system operations
+   - **NotionAgent**: Notion workspace management
+   - **MemoryAgent**: Long-term memory retrieval
+   - **SystemAgent**: macOS integration via Apple MCP
+5. **Tool System** (`mcp/`): MCP tools adapted to CrewAI BaseTool via adapters
+6. **Memory System**: Captures execution context after task completion
 
-### ReAct Engine Pattern
+### CrewAI Multi-Agent Pattern
 
-The ReAct engine in `ai/react_engine/` follows a structured planning-execution cycle:
+The system uses CrewAI's hierarchical process where agents collaborate:
 
-- **Planning Phase**: LLM generates JSON array of `PlanStep` objects with `{id, description, tool, parameters, status}`
-- **Execution Phase**: `StepExecutor` calls tools via `ToolManager`, records results in `ExecutionContext`
-- **Failure Recovery**:
-  - `LoopDetector` identifies repetitive failures
-  - `PlanningEngine` decides between retry/replan
-  - Failures logged to `ExecutionContext.fail_log` for next planning iteration
-- **Safety**: `SafetyGuard` enforces step/retry limits
+- **Hierarchical Process**: PlannerAgent acts as Manager, delegates to specialized workers
+- **Sequential Process**: Alternative mode where tasks execute sequentially
+- **Agent Specialization**: Each agent has a specific domain and dedicated tools
+- **Tool Integration**: MCP tools wrapped as CrewAI BaseTools via adapters in `mcp/crewai_adapters/`
 
-**Key Invariant**: Plan steps must progress toward goal completion. If all steps are read-only operations (e.g., `list_tasks`), `GoalExecutor._should_request_follow_up_plan()` triggers automatic replanning (max 3 times) to add state-changing actions.
+**Key Flow**:
+1. User input → `AngminiCrew.kickoff()`
+2. `TaskFactory.create_tasks_from_input()` creates Task objects
+3. Crew executes with Manager (Planner) delegating to workers
+4. Workers use their specialized CrewAI-adapted tools
+5. Results aggregated and returned to user
+6. Execution context saved to memory (if `memory_service` enabled)
 
 ### Memory System Design
 
@@ -103,13 +123,13 @@ Located in `ai/memory/`:
 - **Retrieval**:
   - Simple: `MemoryRepository.search(query, top_k=3)` (direct embedding similarity)
   - Advanced: `CascadedRetriever` (iterative LLM-filtered search with follow-up queries)
-- **Integration**: `GoalExecutor._prefetch_relevant_memories()` injects top matches into planning prompt
+- **Integration**: MemoryAgent provides access to long-term memory during task execution
 
 **Memory Records** (`memory_records.py`): Each record includes `summary`, `goal`, `user_intent`, `outcome`, `tools_used`, `tags`, `category`, embeddings.
 
-### Tool System (MCP)
+### Tool System (MCP + CrewAI)
 
-Tools inherit from `ToolBlueprint` (`mcp/tool_blueprint.py`):
+**MCP Tools** inherit from `ToolBlueprint` (`mcp/tool_blueprint.py`):
 
 ```python
 class ToolBlueprint(ABC):
@@ -123,13 +143,22 @@ class ToolBlueprint(ABC):
     def __call__(self, **kwargs) -> ToolResult: ...
 ```
 
+**CrewAI Adaptation** (`mcp/crewai_adapters/`):
+- MCP tools wrapped as CrewAI `BaseTool` via adapter classes
+- Each agent receives its specialized tools during initialization
+- Tools execute via original MCP implementations, results returned to CrewAI
+
 **Built-in Tools**:
 - `FileTool` (`mcp/tools/file_tool.py`): File I/O, listing, search
 - `NotionTool` (`mcp/tools/notion_tool.py`): Task/project CRUD via Notion API
 - `MemoryTool` (`mcp/tools/memory_tool.py`): Search experiences, find solutions, analyze patterns
 - `AppleTool` (`mcp/tools/apple_tool.py`): macOS integration (Notes, Reminders, Calendar, etc.) via Apple MCP subprocess
 
-**Tool Registration**: Interface initialization calls `create_default_tool_manager()` from `mcp/__init__.py`, which registers all tools.
+**Tool-Agent Mapping**:
+- FileAgent → FileTool adapter
+- NotionAgent → NotionTool adapter
+- MemoryAgent → MemoryTool adapter
+- SystemAgent → AppleTool adapter
 
 ### Multi-Interface Architecture
 
@@ -137,23 +166,13 @@ class ToolBlueprint(ABC):
 - **Discord** (`interface/discord_bot.py`): Async message handler, responds in-channel
 - **Switching**: Set `DEFAULT_INTERFACE=cli` or `DEFAULT_INTERFACE=discord` in `.env`
 
-Both interfaces use `GoalExecutorFactory.create()` to obtain a fresh `GoalExecutor` instance per request.
-
-### Token Usage Tracking
-
-`ExecutionContext.record_token_usage(metadata, category)` accumulates:
-- `thinking_tokens`: Planning/reasoning phases
-- `response_tokens`: Final message generation
-- Total displayed in `GoalExecutor._decorate_final_message()`
+Both interfaces create `AngminiCrew` instance and call `kickoff(user_input)` for execution.
 
 ### Error Handling Strategy
 
-1. **Tool Errors**: Wrapped in `ToolError`, logged to `ExecutionContext.fail_log`, fed to next planning iteration
-2. **Step Failures**: `StepExecutor` returns `StepResult(outcome=FAILURE, error_reason=...)`
-3. **Replanning Triggers**:
-   - Retry limit exceeded (`PlanningEngine` checks `attempt_counts`)
-   - Loop detected (`LoopDetector.evaluate()`)
-   - Plan structurally insufficient (read-only operations only)
+1. **CrewAI Errors**: Logged with execution time, re-raised to caller
+2. **Tool Failures**: Wrapped in `ToolError`, returned to CrewAI for recovery
+3. **Agent Failures**: CrewAI handles retry logic automatically
 4. **Graceful Degradation**: Apple MCP failures log warnings but don't crash app (see `cli.py:_initialize_apple_mcp_server`)
 
 ## Important Files & Their Roles
@@ -163,12 +182,19 @@ Both interfaces use `GoalExecutorFactory.create()` to obtain a fresh `GoalExecut
 - `ai/core/logger.py`: Structured logging with timestamped session files (`logs/YYYYMMDD_HHMMSS.log`)
 - `ai/core/exceptions.py`: Custom exceptions (`EngineError`, `ToolError`, `ConfigError`, `InterfaceError`)
 
-### ReAct Engine
-- `ai/react_engine/goal_executor.py`: Main orchestrator (776 lines, see line 97 for `run()` method)
-- `ai/react_engine/step_executor.py`: Tool execution wrapper
-- `ai/react_engine/planning_engine.py`: Retry/replan decision logic
-- `ai/react_engine/models.py`: Data classes (`PlanStep`, `ExecutionContext`, `StepResult`, events)
-- `ai/react_engine/prompt_templates/`: LLM prompt templates (Markdown files)
+### CrewAI System (New Architecture)
+- `crew/crew_config.py`: `AngminiCrew` orchestrator (initializes agents, creates Crew, executes tasks)
+- `crew/task_factory.py`: Converts user input to CrewAI Task objects
+- `agents/__init__.py`: `AgentFactory` for creating all agent instances
+- `agents/base_agent.py`: `BaseAngminiAgent` abstract class all agents inherit from
+- `agents/planner_agent.py`: Manager agent for hierarchical process
+- `agents/file_agent.py`, `notion_agent.py`, `memory_agent.py`, `system_agent.py`: Specialized worker agents
+
+### MCP Tools
+- `mcp/__init__.py`: `create_default_tool_manager()` factory
+- `mcp/tools/notion_tool.py`: Notion API client (task CRUD, project relations)
+- `mcp/tools/apple_tool.py`: Subprocess wrapper for `external/apple-mcp/` (TypeScript/Node.js)
+- `mcp/crewai_adapters/`: Adapter classes wrapping MCP tools as CrewAI BaseTools
 
 ### Memory
 - `ai/memory/service.py`: High-level API (`MemoryService.capture()`, `MemoryService.repository.search()`)
@@ -176,14 +202,14 @@ Both interfaces use `GoalExecutorFactory.create()` to obtain a fresh `GoalExecut
 - `ai/memory/factory.py`: Initializes SQLite + FAISS + Qwen embeddings
 - `ai/memory/storage/repository.py`: Unified interface over SQLite/FAISS
 
-### Tools
-- `mcp/__init__.py`: `create_default_tool_manager()` factory
-- `mcp/tools/notion_tool.py`: Notion API client (task CRUD, project relations)
-- `mcp/tools/apple_tool.py`: Subprocess wrapper for `external/apple-mcp/` (TypeScript/Node.js)
+### Legacy (Preserved for Reference)
+- `interface/cli_react_backup.py`: Original ReAct engine CLI implementation
+- `interface/discord_bot_react_backup.py`: Original ReAct engine Discord bot
+- `ai/react_engine/`: Complete ReAct engine implementation (preserved but not actively used)
 
 ### External Dependencies
 - `external/apple-mcp/`: Git submodule (TypeScript MCP server for macOS apps)
-- `requirements.txt`: Python dependencies (torch, transformers, faiss-cpu, discord.py, notion-client, etc.)
+- `requirements.txt`: Python dependencies (crewai, crewai-tools, torch, transformers, faiss-cpu, discord.py, notion-client, etc.)
 
 ## Environment Variables (`.env`)
 
@@ -192,70 +218,103 @@ Both interfaces use `GoalExecutorFactory.create()` to obtain a fresh `GoalExecut
 - `DEFAULT_INTERFACE`: `cli` or `discord`
 
 **Optional**:
-- `GEMINI_MODEL`: Default `models/gemini-1.5-pro`
+- `GEMINI_MODEL`: Default `gemini-2.5-pro`
 - `DISCORD_BOT_TOKEN`: Required if using Discord interface
 - `NOTION_API_KEY`, `NOTION_TODO_DATABASE_ID`, `NOTION_PROJECT_DATABASE_ID`: For Notion integration
 - `LOG_LEVEL`: `DEBUG`, `INFO`, `WARNING`, `ERROR` (default `INFO`)
-- `STREAM_DELAY`: Streaming output delay in seconds (default `0.05`)
+- `STREAM_DELAY`: Streaming output delay in seconds (default `0.01`)
+- `CREW_PROCESS_TYPE`: `hierarchical` or `sequential` (default `hierarchical`)
+- `CREW_MEMORY_ENABLED`: `true` or `false` (enables CrewAI built-in memory)
 
 See `.env.example` for complete reference.
 
 ## Development Guidelines
 
+### When Adding New Agents
+
+1. Subclass `BaseAngminiAgent` in `agents/`
+2. Implement required methods: `role()`, `goal()`, `backstory()`, `tools()`
+3. Create corresponding CrewAI tool adapter in `mcp/crewai_adapters/` if new tools are needed
+4. Register in `AgentFactory.create_all_agents()` (`agents/__init__.py`)
+
 ### When Adding New Tools
 
 1. Subclass `ToolBlueprint` in `mcp/tools/`
 2. Implement `tool_name()`, `schema()`, `__call__()` returning `ToolResult`
-3. Register in `create_default_tool_manager()` (`mcp/__init__.py`)
-4. Document parameters with `type`, `description`, `enum` in schema (used by LLM planning)
+3. Create CrewAI adapter in `mcp/crewai_adapters/` inheriting from `BaseTool`
+4. Assign to appropriate agent in `agents/` via the `tools()` method
 
-### When Modifying ReAct Prompts
+### When Modifying Agent Behavior
 
-- Templates in `ai/react_engine/prompt_templates/` are injected into LLM calls
-- `system_prompt.md`: Defines assistant personality and tool usage guidelines
-- Planning prompt in `goal_executor.py:_build_plan_prompt()`: Includes tool schemas, memory insights, failure logs
-- Changes here directly affect LLM plan quality
+- Agent prompts defined in `role()`, `goal()`, `backstory()` methods
+- Each agent's `build_agent()` method constructs the CrewAI Agent with LLM config
+- Changes to agent personalities affect collaboration dynamics
+- Test with both hierarchical and sequential process modes
 
 ### When Extending Memory System
 
-- Memory capture triggers on: tool usage, personal signals (keywords like "내", "좋아하는"), or non-trivial token usage
-- `_should_capture_memory()` in `goal_executor.py` defines capture heuristics
+- Memory capture triggers on task completion in `crew_config.py:kickoff()`
+- `_should_capture_memory()` logic can be customized in `MemoryService`
 - Retention policy in `ai/memory/retention_policy.py` (currently allows all)
 
 ### Testing Philosophy
 
 - Tests in `tests/` use pytest (not currently installed by default)
-- Integration tests (`test_react_engine_integration.py`) verify end-to-end flows
-- Mock external APIs (Gemini, Notion) in unit tests
+- Integration tests should mock external APIs (Gemini, Notion)
 - Memory tests (`test_memory_repository.py`, `test_qwen3_embedding_vector_store.py`) validate embedding/search
+- CrewAI integration tests should verify agent collaboration and tool usage
 
 ## Common Pitfalls
 
-1. **OpenMP Conflicts**: Memory system sets `KMP_DUPLICATE_LIB_OK=TRUE` to allow both PyTorch and FAISS (see `goal_executor.py:531`)
-2. **Apple MCP Lifecycle**: Must call `_ensure_server_running()` before first use (handled in CLI/Discord init)
-3. **Plan JSON Parsing**: LLM responses may include markdown fences; `_parse_plan_response()` strips them (line 246)
+1. **OpenMP Conflicts**: Memory system sets `KMP_DUPLICATE_LIB_OK=TRUE` to allow both PyTorch and FAISS (see `memory/factory.py`)
+2. **Apple MCP Lifecycle**: Must initialize before first use (handled in CLI/Discord init)
+3. **CrewAI Output Suppression**: Rich console output is captured to prevent noise (see `crew_config.py:kickoff`)
 4. **Notion Relations**: `create_task` auto-matches projects by title if relation property is empty
 5. **Memory Embedding Model**: Default loads `Qwen/Qwen3-Embedding-0.6B` from Hugging Face Hub; override with `QWEN3_EMBEDDING_PATH` for local model
+6. **Agent Tool Access**: Each agent only has access to tools defined in its `tools()` method - don't expect agents to use tools they weren't assigned
 
 ## Debugging Tips
 
 - Session logs: `logs/YYYYMMDD_HHMMSS.log` (timestamped per run)
 - Memory embedding: `memory_embedding.log`
-- Enable DEBUG logging: Set `LOG_LEVEL=DEBUG` in `.env`
-- Trace ReAct loops: Look for `"Executing step X (attempt Y)"` in logs
-- Check token usage: Final response includes `[tokens_total=X, thinking_tokens=Y, response_tokens=Z]`
+- Enable DEBUG logging: Set `LOG_LEVEL=DEBUG` in `.env` (shows CrewAI verbose output)
+- Trace agent execution: Look for agent role/goal in logs during task delegation
+- Check token usage: CrewAI provides usage metrics after execution
+- Rich output suppression: If you need to see CrewAI's visual output, comment out stdout/stderr capture in `crew_config.py`
 
-## Project Status (from PLAN_for_AI_Agent.md)
+## Project Status
 
-- ✅ Phase 1-2: Core ReAct engine complete
-- ✅ Phase 3: Tools (File, Notion, Apple MCP) implemented
-- ✅ Phase 4-4.5: Memory system with cascaded retrieval complete
-- ⏸️ Phase 5: Proactive notification system (planned, not started)
+- ✅ **Phase 1-2**: Core CrewAI multi-agent system complete (v2.0.0 - Oct 2025)
+- ✅ **Phase 3**: Tools (File, Notion, Apple MCP) implemented and adapted to CrewAI
+- ✅ **Phase 4-4.5**: Memory system with cascaded retrieval complete
+- ⏸️ **Phase 5**: Proactive notification system (planned, not started)
 - 🚧 Testing coverage incomplete (pytest not in requirements.txt)
 
 ## Additional Resources
 
 - Development plan: `PLAN_for_AI_Agent.md` (detailed roadmap with checkboxes)
+- CrewAI migration: `docs/CREWAI_MIGRATION_PLAN.md`
 - User guide: `docs/USAGE.md`
 - Memory maintenance: `docs/memory_maintenance.md`
 - Apple tool guide: `docs/APPLE_TOOL_GUIDE.md`
+
+## Migration Notes (ReAct → CrewAI)
+
+The project successfully migrated from custom ReAct engine to CrewAI multi-agent framework:
+
+**What Changed**:
+- Custom ReAct loop (GoalExecutor, StepExecutor) → CrewAI Hierarchical Process
+- Single-agent planning → Multi-agent collaboration with specialized roles
+- Tool execution via ToolManager → Tools adapted to CrewAI BaseTool
+- Manual failure recovery → CrewAI automatic retry/delegation
+
+**What Stayed**:
+- MCP tool implementations (FileTool, NotionTool, etc.) remain unchanged
+- Memory system (capture, storage, retrieval) unchanged
+- Interface layer (CLI, Discord) preserved with minimal changes
+- Configuration system (Config, Logger, exceptions) unchanged
+
+**Legacy Code** (preserved in `interface/*_backup.py` and `ai/react_engine/`):
+- Original ReAct engine remains for reference
+- Can be studied for understanding custom agent implementation patterns
+- Not actively maintained or used in production

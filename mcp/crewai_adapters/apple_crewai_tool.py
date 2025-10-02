@@ -4,8 +4,9 @@ mcp/crewai_adapters/apple_crewai_tool.py
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Optional, List, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from mcp.tools.apple_tool import AppleTool, ToolResult
+from ai.core.logger import get_logger
 
 
 class AppleToolInput(BaseModel):
@@ -29,8 +30,11 @@ class AppleCrewAITool(BaseTool):
     description: str = "macOS 시스템 앱(Notes, Reminders, Calendar 등)과 상호작용합니다."
     args_schema: Type[BaseModel] = AppleToolInput
 
-    def __init__(self):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
         try:
             self._apple_tool = AppleTool()
             # Apple MCP 서버 시작 시도
@@ -45,7 +49,7 @@ class AppleCrewAITool(BaseTool):
         except Exception as e:
             self._apple_tool = None
             self._enabled = False
-            print(f"⚠️ AppleTool 초기화 실패: {e}")
+            self._logger.warning(f"AppleTool 초기화 실패: {e}")
 
     def _run(
         self,
@@ -64,7 +68,16 @@ class AppleCrewAITool(BaseTool):
         **kwargs: Any
     ) -> str:
         """도구 실행"""
+        # 입력 파라미터 상세 로깅
+        params_log = f"operation={operation}"
+        if title:
+            params_log += f", title={title}"
+        if list_name:
+            params_log += f", list={list_name}"
+        self._logger.info(f"🔧 [AppleTool] 실행 - {params_log}")
+
         if not self._enabled:
+            self._logger.warning("❌ [AppleTool] 비활성화")
             return "❌ Apple 도구가 비활성화됨"
 
         # AppleTool 파라미터 구성
@@ -94,6 +107,10 @@ class AppleCrewAITool(BaseTool):
 
         try:
             result: ToolResult = self._apple_tool(**params)
+            if result.success:
+                self._logger.info(f"✅ [AppleTool] 성공")
+            else:
+                self._logger.warning(f"❌ [AppleTool] 실패: {result.error}")
 
             # 결과를 문자열로 변환
             if result.success:

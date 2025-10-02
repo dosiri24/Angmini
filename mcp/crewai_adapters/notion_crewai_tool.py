@@ -4,8 +4,9 @@ mcp/crewai_adapters/notion_crewai_tool.py
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from mcp.tools.notion_tool import NotionTool, ToolResult
+from ai.core.logger import get_logger
 
 
 class NotionToolInput(BaseModel):
@@ -25,8 +26,11 @@ class NotionCrewAITool(BaseTool):
     description: str = "Notion API를 통해 할일 생성, 조회, 업데이트, 삭제 및 프로젝트 관리를 수행합니다."
     args_schema: Type[BaseModel] = NotionToolInput
 
-    def __init__(self):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
         try:
             self._notion_tool = NotionTool()
             self._enabled = True
@@ -34,7 +38,7 @@ class NotionCrewAITool(BaseTool):
             # Notion API 키가 없는 경우 등 초기화 실패 처리
             self._notion_tool = None
             self._enabled = False
-            print(f"⚠️ NotionTool 초기화 실패: {e}")
+            self._logger.warning(f"NotionTool 초기화 실패: {e}")
 
     def _run(
         self,
@@ -49,7 +53,18 @@ class NotionCrewAITool(BaseTool):
         **kwargs: Any
     ) -> str:
         """도구 실행"""
+        # 입력 파라미터 상세 로깅
+        params_log = f"operation={operation}"
+        if title:
+            params_log += f", title={title}"
+        if task_id:
+            params_log += f", task_id={task_id}"
+        if status:
+            params_log += f", status={status}"
+        self._logger.info(f"🔧 [NotionTool] 실행 - {params_log}")
+
         if not self._enabled:
+            self._logger.warning("❌ [NotionTool] 비활성화 (API 키 확인 필요)")
             return "❌ Notion 도구가 비활성화됨 (API 키 확인 필요)"
 
         # NotionTool 파라미터 구성
@@ -71,6 +86,10 @@ class NotionCrewAITool(BaseTool):
 
         try:
             result: ToolResult = self._notion_tool(**params)
+            if result.success:
+                self._logger.info(f"✅ [NotionTool] 성공")
+            else:
+                self._logger.warning(f"❌ [NotionTool] 실패: {result.error}")
 
             # 결과를 문자열로 변환
             if result.success:

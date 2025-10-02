@@ -4,8 +4,9 @@ mcp/crewai_adapters/memory_crewai_tool.py
 """
 from crewai.tools import BaseTool
 from typing import Type, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from mcp.tools.memory_tool import MemoryTool, ToolResult
+from ai.core.logger import get_logger
 
 
 class MemoryToolInput(BaseModel):
@@ -20,8 +21,11 @@ class MemoryCrewAITool(BaseTool):
     description: str = "과거 경험 검색, 해결책 찾기, 패턴 분석을 수행합니다."
     args_schema: Type[BaseModel] = MemoryToolInput
 
-    def __init__(self, memory_service=None):
-        super().__init__()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, memory_service=None, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
         try:
             self._memory_tool = MemoryTool()
             # 메모리 서비스 주입 (있는 경우)
@@ -31,7 +35,7 @@ class MemoryCrewAITool(BaseTool):
         except Exception as e:
             self._memory_tool = None
             self._enabled = False
-            print(f"⚠️ MemoryTool 초기화 실패: {e}")
+            self._logger.warning(f"MemoryTool 초기화 실패: {e}")
 
     def _run(
         self,
@@ -41,7 +45,10 @@ class MemoryCrewAITool(BaseTool):
         **kwargs: Any
     ) -> str:
         """도구 실행"""
+        self._logger.info(f"🔧 [MemoryTool] 실행 - operation={operation}, query={query}, top_k={top_k}")
+
         if not self._enabled:
+            self._logger.warning("❌ [MemoryTool] 비활성화")
             return "❌ 메모리 도구가 비활성화됨"
 
         # MemoryTool 파라미터 구성
@@ -53,6 +60,10 @@ class MemoryCrewAITool(BaseTool):
 
         try:
             result: ToolResult = self._memory_tool(**params)
+            if result.success:
+                self._logger.info(f"✅ [MemoryTool] 성공")
+            else:
+                self._logger.warning(f"❌ [MemoryTool] 실패: {result.error}")
 
             # 결과를 문자열로 변환
             if result.success:

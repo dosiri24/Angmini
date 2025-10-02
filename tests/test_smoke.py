@@ -10,7 +10,6 @@ from ai.ai_brain import AIBrain
 from ai.core.config import Config
 from ai.core.exceptions import EngineError
 from mcp.tool_blueprint import ToolBlueprint, ToolResult
-from mcp.tool_manager import ToolManager
 
 
 @pytest.fixture(name="dummy_genai")
@@ -71,24 +70,4 @@ def test_ai_brain_requires_api_key(dummy_genai):
         AIBrain(config)
 
 
-class DummyTool(ToolBlueprint):
-    tool_name = "dummy"
-    description = "Simple smoke tool"
-    parameters = {}
-
-    def run(self, **kwargs):
-        return ToolResult(success=True, data=kwargs.get("echo"))
-
-
-def test_tool_manager_smoke():
-    manager = ToolManager()
-    dummy = DummyTool()
-
-    manager.register(dummy)
-    assert "dummy" in manager.registered_names()
-
-    result = manager.execute("dummy", echo="value")
-    assert result.unwrap() == "value"
-
-    manager.unregister("dummy")
-    assert "dummy" not in manager.registered_names()
+# ToolManager 관련 테스트는 제거됨 (CrewAI 마이그레이션으로 ToolManager 미사용)

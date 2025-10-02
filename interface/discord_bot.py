@@ -19,7 +19,7 @@ from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
 from ai.memory.factory import create_memory_service
 from ai.ai_brain import AIBrain
-from crew import AngminiCrew
+from ai.crew import AngminiCrew
 
 
 def run_bot(config: Config) -> None:
