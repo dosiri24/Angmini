@@ -52,3 +52,52 @@ def create_memory_repository(
 
     repository = MemoryRepository(store, vector_index=vector_index, embedder=embedder)
     return repository
+
+
+def create_memory_service(
+    *,
+    database_path: Optional[str | Path] = None,
+    index_path: Optional[str | Path] = None,
+    instruction: Optional[str] = None,
+):
+    """Create a full MemoryService with repository and pipeline configured."""
+    # Late imports to avoid circular dependency
+    from .service import MemoryService
+    from .memory_curator import MemoryCurator
+    from .deduplicator import MemoryDeduplicator
+    from .retention_policy import MemoryRetentionPolicy
+    from .snapshot_extractor import SnapshotExtractor
+    from .pipeline import MemoryPipeline
+    from ai.core.config import Config
+
+    # Create repository
+    repository = create_memory_repository(
+        database_path=database_path,
+        index_path=index_path,
+        instruction=instruction
+    )
+
+    # Create pipeline components
+    config = Config.load()
+    from ai.ai_brain import AIBrain
+
+    # Create AIBrain for curator
+    brain = AIBrain(config)
+
+    snapshot_extractor = SnapshotExtractor()
+    retention_policy = MemoryRetentionPolicy()
+    curator = MemoryCurator(brain)
+    deduplicator = MemoryDeduplicator()  # No argument needed
+
+    # Create pipeline
+    pipeline = MemoryPipeline(
+        snapshot_extractor=snapshot_extractor,
+        retention_policy=retention_policy,
+        curator=curator,
+        deduplicator=deduplicator
+    )
+
+    # Create service
+    service = MemoryService(repository=repository, pipeline=pipeline)
+
+    return service

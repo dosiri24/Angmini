@@ -15,5 +15,9 @@ faiss-cpu>=1.8.0               # 벡터 유사도 검색
 # Utilities
 send2trash>=1.8.2              # 안전한 파일 삭제
 
+# Multi-Agent Framework
+crewai>=0.28.0                 # 멀티 에이전트 프레임워크
+crewai-tools>=0.2.0            # CrewAI 도구 라이브러리
+
 # Development & Testing
 pytest>=7.4.0                  # 테스트 프레임워크

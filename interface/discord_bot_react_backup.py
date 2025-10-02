@@ -1,10 +1,9 @@
-"""Discord bot interface for the Personal AI Assistant with CrewAI."""
+"""Discord bot interface for the Personal AI Assistant."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Optional
-import logging
 
 try:
     import discord
@@ -17,13 +16,13 @@ else:
 from ai.core.config import Config
 from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
-from ai.memory.factory import create_memory_service
-from ai.ai_brain import AIBrain
-from crew import AngminiCrew
+from mcp import create_default_tool_manager
+from ai.react_engine.runtime import GoalExecutorFactory
+from .summary import format_execution_summary
 
 
 def run_bot(config: Config) -> None:
-    """Start the Discord bot with CrewAI integration."""
+    """Start the Discord bot, validating configuration beforehand."""
     if _IMPORT_ERROR is not None or discord is None:
         raise InterfaceError(
             "discord.py 패키지가 설치되어 있지 않습니다. 'pip install discord.py' 후 다시 시도하세요."
@@ -33,39 +32,17 @@ def run_bot(config: Config) -> None:
     intents = discord.Intents.default()
     intents.message_content = True
 
-    logger = get_logger(__name__)
-    logger.info("Starting Discord bot with CrewAI")
-
-    # AI Brain 초기화
+    tool_manager = create_default_tool_manager()
     try:
-        ai_brain = AIBrain(config)
-        logger.info("AI Brain initialized")
+        executor_factory = GoalExecutorFactory(config, tool_manager)
     except EngineError as exc:
-        logger.error("Failed to initialize AIBrain: %s", exc)
         raise InterfaceError(str(exc)) from exc
 
-    # 메모리 서비스 초기화
-    try:
-        memory_service = create_memory_service()
-        logger.info("Memory service initialized")
-    except Exception as exc:
-        logger.warning("Failed to initialize memory service: %s", exc)
-        memory_service = None
+    client = _build_client(intents, executor_factory)
 
-    # CrewAI 초기화
-    try:
-        crew = AngminiCrew(
-            ai_brain=ai_brain,
-            memory_service=memory_service,
-            config=config,
-            verbose=False  # Discord에서는 verbose 비활성화
-        )
-        logger.info("AngminiCrew initialized")
-    except Exception as exc:
-        logger.error("Failed to initialize AngminiCrew: %s", exc)
-        raise InterfaceError(f"CrewAI를 초기화하지 못했습니다: {exc}") from exc
-
-    client = _build_client(intents, crew, config)
+    logger = get_logger(__name__)
+    logger.info("Starting Discord bot")
+    logger.debug("Registered tools: %s", list(tool_manager.registered_names()))
 
     try:
         client.run(token)
@@ -77,8 +54,7 @@ def run_bot(config: Config) -> None:
 
 def _build_client(
     intents: "discord.Intents",
-    crew: AngminiCrew,
-    config: Config,
+    executor_factory: GoalExecutorFactory,
 ) -> "discord.Client":
     client = discord.Client(intents=intents)
     logger = get_logger(__name__)
@@ -98,23 +74,16 @@ def _build_client(
 
         async with message.channel.typing():
             try:
-                # CrewAI는 동기 실행이므로 asyncio.to_thread 사용
-                result = await asyncio.to_thread(crew.kickoff, content)
-
-                # 결과 포맷팅
-                if result:
-                    response = f"🤖 Angmini: {result}"
-                else:
-                    response = "⚠️ 결과를 생성하지 못했습니다."
-
+                context = await asyncio.to_thread(_execute_goal, executor_factory, content)
+                summary = format_execution_summary(context)
             except EngineError as exc:
                 logger.error("Goal execution failed: %s", exc)
-                response = f"⚠️ 작업을 완료하지 못했어요: {exc}"
+                summary = f"⚠️ 작업을 완료하지 못했어요: {exc}"
             except Exception as exc:  # pragma: no cover - defensive guard
                 logger.exception("Unexpected error while handling Discord message")
-                response = "⚠️ 알 수 없는 오류가 발생했습니다. 로그를 확인해 주세요."
+                summary = "⚠️ 알 수 없는 오류가 발생했습니다. 로그를 확인해 주세요."
 
-        await message.reply(_truncate_for_discord(response))
+        await message.reply(_truncate_for_discord(summary))
 
     return client
 
@@ -123,6 +92,11 @@ def _coerce_token(token: Optional[str]) -> str:
     if not token or not token.strip():
         raise InterfaceError("Discord 봇 토큰이 설정되지 않았습니다. .env 파일을 확인하세요.")
     return token.strip()
+
+
+def _execute_goal(executor_factory: GoalExecutorFactory, goal: str):
+    executor = executor_factory.create()
+    return executor.run(goal)
 
 
 def _truncate_for_discord(message: str, limit: int = 1800) -> str:
