@@ -69,8 +69,8 @@ class BaseAngminiAgent(ABC):
                 llm=f"gemini/{model_name}",  # LiteLLM을 통한 Gemini 사용
                 verbose=self.verbose,
                 memory=True,  # CrewAI 메모리 활성화
-                max_iter=5,  # 최대 반복 횟수
-                allow_delegation=False,  # 다른 에이전트에게 위임 금지
+                max_iter=self.config.agent_max_iter,  # Config에서 최대 반복 횟수 읽기
+                allow_delegation=self.config.agent_allow_delegation,  # Config에서 위임 설정 읽기
             )
             self.logger.info(f"Agent '{self.role()}' 생성 완료")
         return self._agent

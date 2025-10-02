@@ -143,11 +143,13 @@ class TaskFactory:
         agent_names: List[str]
     ) -> List[Task]:
         """순차 실행용 Task 생성 (명시적 순서)"""
+        from agents import AgentFactory
+
         tasks = []
 
         for desc, agent_name in zip(descriptions, agent_names):
             if agent_name not in self.worker_agents:
-                self.logger.warning(f"알 수 없는 에이전트: {agent_name}")
+                self.logger.warning(f"알 수 없는 에이전트 역할: {agent_name}")
                 continue
 
             agent = self.worker_agents[agent_name]
@@ -162,6 +164,7 @@ class TaskFactory:
         for i in range(1, len(tasks)):
             tasks[i].context = [tasks[i-1]]  # 이전 Task 결과를 컨텍스트로 사용
 
+        self.logger.debug(f"순차 Task {len(tasks)}개 생성 완료")
         return tasks
 
     def create_parallel_tasks(
@@ -169,11 +172,13 @@ class TaskFactory:
         task_descriptions: Dict[str, str]
     ) -> List[Task]:
         """병렬 실행용 Task 생성"""
+        from agents import AgentFactory
+
         tasks = []
 
         for agent_role, description in task_descriptions.items():
             if agent_role not in self.worker_agents:
-                self.logger.warning(f"알 수 없는 에이전트: {agent_role}")
+                self.logger.warning(f"알 수 없는 에이전트 역할: {agent_role}")
                 continue
 
             agent = self.worker_agents[agent_role]
@@ -185,4 +190,5 @@ class TaskFactory:
             tasks.append(task)
 
         # 병렬 실행이므로 의존성 설정 없음
+        self.logger.debug(f"병렬 Task {len(tasks)}개 생성 완료")
         return tasks

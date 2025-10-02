@@ -20,7 +20,7 @@ class AngminiCrew:
         ai_brain: Optional[AIBrain] = None,
         memory_service: Optional[MemoryService] = None,
         config: Optional[Config] = None,
-        verbose: bool = True
+        verbose: bool = False
     ):
         self.config = config or Config.load()
         self.ai_brain = ai_brain or AIBrain(self.config)
@@ -42,7 +42,7 @@ class AngminiCrew:
 
         self.logger.info(f"Crew 초기화 완료 - Planner + {len(self.worker_agents)} 워커")
 
-    def create_crew(self, tasks: List, process_type: str = "hierarchical") -> Crew:
+    def create_crew(self, tasks: List, process_type: Optional[str] = None) -> Crew:
         """Crew 인스턴스 생성"""
         all_agents = [agent.build_agent() for agent in self.worker_agents]
 
@@ -51,6 +51,13 @@ class AngminiCrew:
         if model_name.startswith("models/"):
             model_name = model_name.replace("models/", "")
 
+        # process_type이 지정되지 않으면 Config에서 읽기
+        if process_type is None:
+            process_type = self.config.crew_process_type
+
+        self.logger.debug(f"Creating crew with {len(all_agents)} agents, process: {process_type}")
+        self.logger.debug(f"Tasks: {[t.description[:50] + '...' if len(t.description) > 50 else t.description for t in tasks]}")
+
         if process_type == "hierarchical":
             # Planner가 Manager 역할
             crew = Crew(
@@ -58,9 +65,10 @@ class AngminiCrew:
                 tasks=tasks,
                 process=Process.hierarchical,
                 manager_agent=self.planner.build_agent(),
-                verbose=self.verbose,
-                memory=False,  # Disable CrewAI memory (we use our own)
-                manager_llm=f"gemini/{model_name}",  # Manager용 LLM 명시
+                verbose=False,  # 박스 출력 완전 비활성화
+                memory=self.config.crew_memory_enabled,
+                manager_llm=f"gemini/{model_name}",
+                output_log_file=False,  # 출력 로그 파일 비활성화
             )
         else:
             # 순차 실행
@@ -68,8 +76,9 @@ class AngminiCrew:
                 agents=all_agents,
                 tasks=tasks,
                 process=Process.sequential,
-                verbose=self.verbose,
-                memory=False  # Disable CrewAI memory (we use our own)
+                verbose=False,  # 박스 출력 완전 비활성화
+                memory=self.config.crew_memory_enabled,
+                output_log_file=False,  # 출력 로그 파일 비활성화
             )
 
         return crew
@@ -77,6 +86,11 @@ class AngminiCrew:
     def kickoff(self, user_input: str) -> str:
         """사용자 요청 실행"""
         from .task_factory import TaskFactory
+        import time
+        import sys
+        from io import StringIO
+
+        start_time = time.time()
 
         # Task 생성
         task_factory = TaskFactory(
@@ -86,29 +100,55 @@ class AngminiCrew:
         )
 
         tasks = task_factory.create_tasks_from_input(user_input)
+        self.logger.info(f"CrewAI 작업 시작 - Task: {len(tasks)}개")
 
-        # Crew 실행
-        crew = self.create_crew(tasks, process_type="hierarchical")
+        # Crew 실행 (Rich 출력 억제)
+        crew = self.create_crew(tasks)
 
         try:
-            result = crew.kickoff()
-            self.logger.info(f"Crew 실행 완료 - 결과: {len(str(result))} 문자")
+            # Rich 콘솔 출력을 캡처하여 억제
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            sys.stdout = StringIO()
+            sys.stderr = StringIO()
+
+            try:
+                result = crew.kickoff()
+            finally:
+                # stdout/stderr 복원
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+
+            execution_time = time.time() - start_time
+
+            # 간단한 로그 출력
+            result_text = str(result).strip()
+            self.logger.info(f"CrewAI 완료 [{execution_time:.1f}초] - 결과: {len(result_text)}자")
+
+            # 메트릭 간단히 출력
+            if hasattr(crew, 'usage_metrics'):
+                metrics = crew.usage_metrics
+                total_tokens = getattr(metrics, 'total_tokens', 0)
+                prompt_tokens = getattr(metrics, 'prompt_tokens', 0)
+                completion_tokens = getattr(metrics, 'completion_tokens', 0)
+                self.logger.debug(f"토큰: {total_tokens} (입력: {prompt_tokens}, 출력: {completion_tokens})")
 
             # 메모리에 저장 (성공한 작업)
             if self.memory_service:
                 try:
                     from ai.react_engine.models import ExecutionContext
-                    context = ExecutionContext()
-                    context.goal = user_input
+                    context = ExecutionContext(goal=user_input)
                     context.final_message = str(result)
                     self.memory_service.capture(context)
+                    self.logger.debug("메모리 저장 완료")
                 except Exception as e:
-                    self.logger.warning(f"메모리 저장 실패: {e}")
+                    self.logger.debug(f"메모리 저장 건너뜀: {e}")
 
             return str(result)
 
         except Exception as e:
-            self.logger.error(f"Crew 실행 오류: {e}", exc_info=True)
+            execution_time = time.time() - start_time
+            self.logger.error(f"CrewAI 오류 [{execution_time:.1f}초]: {e}")
             raise
 
     def reset(self):

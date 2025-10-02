@@ -9,7 +9,8 @@
       "Bash(env)",
       "Bash(cat:*)",
       "Bash(claude mcp add codex:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

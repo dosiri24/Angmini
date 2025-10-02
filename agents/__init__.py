@@ -46,6 +46,25 @@ class AgentFactory:
         config = config or Config.load()
         return PlannerAgent(ai_brain, memory_service, config)
 
+    @staticmethod
+    def get_agent_by_role(role_name: str, agents: List[BaseAngminiAgent]) -> Optional[BaseAngminiAgent]:
+        """역할명으로 에이전트 찾기
+
+        Args:
+            role_name: 찾을 에이전트의 역할명 (agent.role() 값)
+            agents: 검색할 에이전트 리스트
+
+        Returns:
+            매칭되는 에이전트 또는 None
+
+        Example:
+            >>> file_agent = AgentFactory.get_agent_by_role("파일 시스템 관리 전문가", agents)
+        """
+        for agent in agents:
+            if agent.role() == role_name:
+                return agent
+        return None
+
 
 __all__ = [
     'AgentFactory',

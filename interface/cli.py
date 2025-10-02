@@ -21,6 +21,17 @@ _EXIT_COMMANDS: tuple[str, ...] = ("exit", "quit", "종료")
 
 def run(config: Config) -> None:
     """Launch a simple interactive CLI session with CrewAI integration."""
+    # 불필요한 로그 억제
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+    logging.getLogger("crewai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # CrewAI Rich 출력 억제
+    import os
+    os.environ["CREWAI_TELEMETRY"] = "false"
+    os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+
     logger = get_logger(__name__)
     logger.info("Starting CLI interface (CrewAI mode)")
 
