@@ -72,7 +72,7 @@ class BaseAngminiAgent(ABC):
                 backstory=self.backstory(),
                 tools=self.tools(),
                 llm=f"gemini/{model_name}",  # LiteLLM을 통한 Gemini 사용
-                verbose=self.verbose,
+                verbose=False,  # Rich console 출력 비활성화 (step_callback으로 대체)
                 memory=True,  # CrewAI 메모리 활성화
                 max_iter=self.config.agent_max_iter,  # Config에서 최대 반복 횟수 읽기
                 allow_delegation=allow_delegation,

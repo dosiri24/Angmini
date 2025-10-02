@@ -43,21 +43,39 @@ class AngminiCrew:
         self.logger.info(f"Crew 초기화 완료 - Planner + {len(self.worker_agents)} 워커")
 
     def _step_callback(self, step_output):
-        """CrewAI 각 단계 실행 시 호출되는 콜백"""
-        # 에이전트 이름과 작업 내용 로깅
-        if hasattr(step_output, 'agent'):
-            agent_name = step_output.agent
-            self.logger.info(f"[Agent: {agent_name}] 작업 진행 중")
+        """CrewAI 각 단계 실행 시 호출되는 콜백 - 간단한 로그 출력"""
+        try:
+            # 에이전트 정보 추출
+            agent_name = getattr(step_output, 'agent', None)
+            if isinstance(agent_name, str):
+                agent_role = agent_name
+            elif hasattr(agent_name, 'role'):
+                agent_role = agent_name.role
+            else:
+                agent_role = "Unknown"
 
-        # 사용된 도구 로깅
-        if hasattr(step_output, 'tool'):
-            tool_name = step_output.tool
-            self.logger.info(f"[Tool] {tool_name} 실행")
+            # 도구 사용 정보
+            tool_name = getattr(step_output, 'tool', None)
 
-        # 출력 내용 로깅
-        if hasattr(step_output, 'output'):
-            output = str(step_output.output)[:200]  # 200자로 제한
-            self.logger.debug(f"[Output] {output}")
+            # 작업 설명
+            task_desc = ""
+            if hasattr(step_output, 'task'):
+                task = step_output.task
+                if hasattr(task, 'description'):
+                    desc = str(task.description).replace('\n', ' ').strip()
+                    task_desc = desc[:60] + '...' if len(desc) > 60 else desc
+
+            # 한 줄 로그 출력
+            if tool_name:
+                self.logger.info(f"Agent [{agent_role}] → Tool [{tool_name}]")
+            elif task_desc:
+                self.logger.info(f"Agent [{agent_role}] 시작: {task_desc}")
+            else:
+                self.logger.info(f"Agent [{agent_role}] 작업 중")
+
+        except Exception as e:
+            # 콜백 오류는 무시 (CrewAI 실행에 영향 없도록)
+            self.logger.debug(f"Step callback 오류: {e}")
 
     def create_crew(self, tasks: List, process_type: Optional[str] = None) -> Crew:
         """Crew 인스턴스 생성"""
@@ -95,7 +113,7 @@ class AngminiCrew:
                 agents=all_agents,  # Planner + Workers
                 tasks=tasks,
                 process=Process.sequential,  # Sequential로 실행하되 delegation 활용
-                verbose=True,
+                verbose=False,  # Rich console 출력 비활성화
                 memory=self.config.crew_memory_enabled,
                 output_log_file=False,
                 step_callback=self._step_callback,
@@ -106,7 +124,7 @@ class AngminiCrew:
                 agents=all_agents,
                 tasks=tasks,
                 process=Process.sequential,
-                verbose=True,
+                verbose=False,  # Rich console 출력 비활성화
                 memory=self.config.crew_memory_enabled,
                 output_log_file=False,
                 step_callback=self._step_callback,

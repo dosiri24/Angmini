@@ -8,6 +8,115 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+### Quick CLI Testing (Recommended for AI)
+
+The `bin/angmini` script allows direct testing without manual interaction:
+
+```bash
+# Show help and available options (instant)
+bin/angmini --help
+
+# Check version (instant)
+bin/angmini --version
+
+# Execute single command (3-5 seconds)
+bin/angmini --no-stream "안녕"
+
+# More complex commands (8-15 seconds) - ⚠️ May timeout in Claude Code
+bin/angmini --no-stream "현재 디렉토리 파일 목록 보여줘"
+
+# Debug mode (verbose CrewAI output)
+bin/angmini --debug "테스트"
+
+# Interactive mode (requires user input)
+bin/angmini
+```
+
+**⚠️ Claude Code Timeout Warning:**
+- Bash tool has 2-minute default timeout (max 10 minutes)
+- Angmini initialization: 4-6 seconds
+- Simple queries: 3-5 seconds (safe)
+- Complex queries: 8-20 seconds (may timeout)
+- **Solution**: Use `timeout=600000` parameter (10 minutes) when calling Bash tool
+- **Alternative**: Test with simple commands only (`--version`, `--help`, `"안녕"`)
+
+#### Understanding Test Results
+
+**Successful Execution:**
+```bash
+$ bin/angmini --no-stream "안녕"
+🍎 Apple MCP 서버가 준비되었습니다!
+
+📝 최종 결과:
+안녕하세요! 저는 작업 계획 및 조율 총괄 책임자 Angmini입니다. 무엇을 도와드릴까요?
+```
+
+**What to Look For:**
+- ✅ `🍎 Apple MCP 서버가 준비되었습니다!` (macOS only) - AppleAppsAgent ready
+- ✅ `📝 최종 결과:` followed by AI response - Task completed successfully
+- ✅ Exit code 0 - No errors occurred
+- ✅ Execution time typically 2-5 seconds for simple queries
+
+**Common Issues:**
+- ❌ `Configuration error: GEMINI_API_KEY is missing` - Check `.env` file
+- ❌ `ModuleNotFoundError` - Activate virtual environment: `source .venv/bin/activate`
+- ❌ Timeout (>60s) - Check network connection or API quota
+
+#### Agent-Specific Testing
+
+**FileAgent (파일 시스템 관리)**
+```bash
+bin/angmini --no-stream "현재 디렉토리의 Python 파일 목록 보여줘"
+# Expected: List of .py files in current directory
+```
+
+**MemoryAgent (장기 기억)**
+```bash
+bin/angmini --no-stream "최근에 뭐 작업했어?"
+# Expected: Summary of recent tasks from memory
+```
+
+**AppleAppsAgent (macOS 내장 앱 연동, macOS only)**
+```bash
+bin/angmini --no-stream "Mac의 Notes 앱에 있는 노트 목록 보여줘"
+# Expected: List of notes from macOS Notes app
+```
+
+**NotionAgent (Notion 워크스페이스)**
+```bash
+bin/angmini --no-stream "Notion에서 오늘 할 일 목록 가져와줘"
+# Expected: TODO items from Notion database
+# Requires: NOTION_API_KEY in .env
+```
+
+#### Performance Benchmarking
+
+```bash
+# Measure execution time
+time bin/angmini --no-stream "안녕"
+# Typical: 2-5 seconds for simple queries
+
+# Check token usage (in logs)
+bin/angmini --no-stream "테스트" 2>&1 | grep "토큰:"
+# Example: 토큰: 1745 (입력: 1579, 출력: 166)
+```
+
+#### Debug Mode Output
+
+When testing with `--debug`, you'll see detailed CrewAI execution:
+```bash
+bin/angmini --debug "테스트"
+```
+
+**Key Debug Indicators:**
+- Agent initialization: `Agent '작업 계획 및 조율 총괄 책임자' 생성 완료`
+- Task execution: `Agent [Unknown] 작업 중`
+- Completion: `CrewAI 완료 [2.7초] - 결과: 51자`
+- Token usage: `토큰: 1745 (입력: 1579, 출력: 166)`
+- Memory: `메모리 저장 완료`
+
+See `TESTING.md` for comprehensive testing scenarios and troubleshooting.
+
 ### Development & Testing
 
 ```bash
@@ -93,7 +202,7 @@ The following rules must be followed when working on this project:
    - **FileAgent**: File system operations
    - **NotionAgent**: Notion workspace management
    - **MemoryAgent**: Long-term memory retrieval
-   - **SystemAgent**: macOS integration via Apple MCP
+   - **AppleAppsAgent**: macOS native apps integration via Apple MCP
 5. **Tool System** (`mcp/`): MCP tools adapted to CrewAI BaseTool via adapters
 6. **Memory System**: Captures execution context after task completion
 
@@ -158,7 +267,7 @@ class ToolBlueprint(ABC):
 - FileAgent → FileTool adapter
 - NotionAgent → NotionTool adapter
 - MemoryAgent → MemoryTool adapter
-- SystemAgent → AppleTool adapter
+- AppleAppsAgent → AppleTool adapter
 
 ### Multi-Interface Architecture
 
@@ -188,7 +297,7 @@ Both interfaces create `AngminiCrew` instance and call `kickoff(user_input)` for
 - `agents/__init__.py`: `AgentFactory` for creating all agent instances
 - `agents/base_agent.py`: `BaseAngminiAgent` abstract class all agents inherit from
 - `agents/planner_agent.py`: Manager agent for hierarchical process
-- `agents/file_agent.py`, `notion_agent.py`, `memory_agent.py`, `system_agent.py`: Specialized worker agents
+- `agents/file_agent.py`, `notion_agent.py`, `memory_agent.py`, `apple_apps_agent.py`: Specialized worker agents
 
 ### MCP Tools
 - `mcp/__init__.py`: `create_default_tool_manager()` factory

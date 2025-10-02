@@ -12,7 +12,7 @@ from .planner_agent import PlannerAgent
 from .file_agent import FileAgent
 from .notion_agent import NotionAgent
 from .memory_agent import MemoryAgent
-from .system_agent import SystemAgent
+from .apple_apps_agent import AppleAppsAgent
 
 
 class AgentFactory:
@@ -31,7 +31,7 @@ class AgentFactory:
             FileAgent(ai_brain, memory_service, config),
             NotionAgent(ai_brain, memory_service, config),
             MemoryAgent(ai_brain, memory_service, config),
-            SystemAgent(ai_brain, memory_service, config)
+            AppleAppsAgent(ai_brain, memory_service, config)
         ]
 
         return agents
@@ -73,5 +73,5 @@ __all__ = [
     'FileAgent',
     'NotionAgent',
     'MemoryAgent',
-    'SystemAgent',
+    'AppleAppsAgent',
 ]

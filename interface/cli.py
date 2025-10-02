@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 import platform
 import logging
 import sys
@@ -185,6 +185,96 @@ def _display_execution_summary(context, config: Config) -> None:
     except Exception as e:
         logger = get_logger(__name__)
         logger.warning(f"실행 요약 표시 실패: {e}")
+
+
+def run_single_command(config: Config, query: str) -> None:
+    """Execute a single command and exit (non-interactive mode)."""
+    # 불필요한 로그 억제
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # CrewAI 로그 레벨 설정
+    if config.log_level == "DEBUG":
+        logging.getLogger("crewai").setLevel(logging.INFO)
+    else:
+        logging.getLogger("crewai").setLevel(logging.WARNING)
+
+    # CrewAI Rich 출력 억제
+    import os
+    os.environ["CREWAI_TELEMETRY"] = "false"
+    os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+
+    logger = get_logger(__name__)
+    logger.info("Single command mode: %s", query)
+
+    # AI Brain 초기화
+    try:
+        ai_brain = AIBrain(config)
+        logger.info("AI Brain initialized")
+    except EngineError as exc:
+        logger.error("Failed to initialize AIBrain: %s", exc)
+        print(f"⚠️ AI 엔진을 초기화하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    # 메모리 서비스 초기화
+    try:
+        memory_service = create_memory_service()
+        logger.info("Memory service initialized")
+    except Exception as exc:
+        logger.warning("Failed to initialize memory service: %s", exc)
+        memory_service = None
+
+    # CrewAI 초기화
+    try:
+        crew = AngminiCrew(
+            ai_brain=ai_brain,
+            memory_service=memory_service,
+            config=config,
+            verbose=config.log_level == "DEBUG"
+        )
+        logger.info("AngminiCrew initialized")
+    except Exception as exc:
+        logger.error("Failed to initialize AngminiCrew: %s", exc)
+        print(f"⚠️ CrewAI를 초기화하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    # Apple MCP 서버 사전 시작 (macOS에서만)
+    if platform.system() == "Darwin":
+        _initialize_apple_mcp_server(logger)
+
+    # 명령 실행
+    try:
+        # DEBUG 모드가 아닐 때만 진행 메시지 표시
+        if config.log_level != "DEBUG":
+            print("🤖 처리 중...", end="", flush=True)
+
+        result = crew.kickoff(query)
+
+        # 결과 출력
+        if config.log_level != "DEBUG":
+            print("\r", end="")  # 진행 메시지 지우기
+            if config.stream_delay > 0:
+                for char in result:
+                    print(char, end="", flush=True)
+                    time.sleep(config.stream_delay)
+                print()
+            else:
+                print(result)
+        else:
+            # DEBUG 모드에서는 최종 결과만 표시
+            print(f"\n📝 최종 결과:\n{result}")
+
+        logger.info("Command executed successfully")
+
+    except EngineError as exc:
+        logger.error("Command execution failed: %s", exc)
+        print(f"\n⚠️ 작업을 완료하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error during command execution")
+        print(f"\n⚠️ 오류가 발생했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 if __name__ == "__main__":

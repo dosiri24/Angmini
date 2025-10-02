@@ -43,6 +43,7 @@ def _mask(value: Optional[str]) -> str:
 class Config:
     """Immutable runtime configuration derived from environment variables."""
 
+    ai_assistant_name: str
     default_interface: str
     discord_bot_token: Optional[str]
     gemini_api_key: Optional[str]
@@ -95,6 +96,7 @@ class Config:
             for key, value in override_env.items():
                 os.environ[key] = value
 
+        ai_assistant_name = os.getenv("AI_ASSISTANT_NAME", "Angmini")
         raw_interface = os.getenv("DEFAULT_INTERFACE", "cli")
         if raw_interface is None:
             raise ConfigError("DEFAULT_INTERFACE environment variable is missing.")
@@ -157,6 +159,7 @@ class Config:
         )
 
         return cls(
+            ai_assistant_name=ai_assistant_name,
             default_interface=interface_value,
             discord_bot_token=_coerce_optional(os.getenv("DISCORD_BOT_TOKEN")),
             gemini_api_key=_coerce_optional(raw_key),
@@ -173,6 +176,7 @@ class Config:
     def as_dict(self) -> Mapping[str, Optional[str]]:
         """Expose configuration values for debugging or serialization."""
         return {
+            "ai_assistant_name": self.ai_assistant_name,
             "default_interface": self.default_interface,
             "discord_bot_token": self.discord_bot_token,
             "gemini_api_key": self.gemini_api_key,
