@@ -37,7 +37,7 @@ class AppleCrewAITool(BaseTool):
             try:
                 from mcp.apple_mcp_manager import AppleMCPManager
                 self._mcp_manager = AppleMCPManager()
-                self._mcp_manager._ensure_server_running()
+                self._mcp_manager.start_server()
                 self._enabled = True
             except:
                 # MCP 서버 시작 실패시에도 도구는 초기화

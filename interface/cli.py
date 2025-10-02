@@ -73,7 +73,7 @@ def _initialize_apple_mcp_server(logger: logging.Logger) -> None:
         from mcp.apple_mcp_manager import AppleMCPManager
 
         manager = AppleMCPManager()
-        if manager._ensure_server_running():
+        if manager.start_server():
             logger.info("Apple MCP server ready")
             print("🍎 Apple MCP 서버가 준비되었습니다!")
         else:
