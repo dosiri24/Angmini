@@ -22,9 +22,9 @@ _EXIT_COMMANDS: tuple[str, ...] = ("exit", "quit", "종료")
 def run(config: Config) -> None:
     """Launch a simple interactive CLI session."""
     logger = get_logger(__name__)
-    logger.info("Starting CLI interface (default interface=%s)", config.default_interface)
+    logger.info("Starting CLI interface")
     tool_manager = create_default_tool_manager()
-    logger.debug("Registered tools: %s", list(tool_manager.registered_names()))
+    logger.info("Tools registered: %s", ", ".join(tool_manager.registered_names()))
 
     # Apple MCP 서버 사전 시작 (macOS에서만)
     if platform.system() == "Darwin":
@@ -48,14 +48,14 @@ def _initialize_apple_mcp_server(logger: logging.Logger, tool_manager) -> None:
         # Apple 도구가 등록되어 있는지 확인
         if "apple" in tool_manager.registered_names():
             apple_tool = tool_manager.get("apple")
-            logger.info("🍎 Apple MCP 서버 사전 시작 중...")
-            
+            logger.debug("Starting Apple MCP server...")
+
             # 서버 시작 시도
             if apple_tool._ensure_server_running():
-                logger.info("✅ Apple MCP 서버가 성공적으로 시작되었습니다")
+                logger.info("Apple MCP server ready")
                 print("🍎 Apple MCP 서버가 준비되었습니다!")
             else:
-                logger.warning("⚠️ Apple MCP 서버 시작에 실패했습니다")
+                logger.warning("Apple MCP server failed to start")
                 print("⚠️ Apple MCP 서버를 시작할 수 없습니다. 메모 기능이 제한될 수 있습니다.")
                 print("   설치 가이드: https://github.com/supermemoryai/apple-mcp")
     except Exception as exc:

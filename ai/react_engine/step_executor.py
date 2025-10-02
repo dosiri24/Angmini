@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from ai.ai_brain import AIBrain
 from ai.core.exceptions import EngineError, ToolError
@@ -35,10 +37,49 @@ class StepExecutor:
         if not step.tool_name:
             return self._handle_dialogue_step(step, context, attempt)
 
+        # Basic parameter validation (placeholders, basic UUID format)
+        validation_error = self._validate_parameters(step.parameters)
+        if validation_error:
+            self._logger.error("[STEP-%s] Parameter validation failed: %s", step.id, validation_error)
+            return StepResult(
+                step_id=step.id,
+                outcome=StepOutcome.FAILED,
+                error_reason=f"❌ Invalid parameter detected: {validation_error}\n"
+                            f"💡 Hint: Use actual values from previous step results, not placeholders.",
+                attempt=attempt,
+            )
+
+        # Tool-specific validation (if tool implements validate_parameters)
+        try:
+            tool = self._tool_manager.get(step.tool_name)
+            if hasattr(tool, 'validate_parameters'):
+                is_valid, tool_error = tool.validate_parameters(**step.parameters)
+                if not is_valid:
+                    self._logger.error("[STEP-%s] Tool validation failed: %s", step.id, tool_error)
+                    return StepResult(
+                        step_id=step.id,
+                        outcome=StepOutcome.FAILED,
+                        error_reason=tool_error or "Tool-specific validation failed",
+                        attempt=attempt,
+                    )
+        except ToolError:
+            # Tool not found - will fail in execute() below
+            pass
+
+        # Log key parameters
+        self._log_tool_parameters(step)
+
         try:
             tool_result = self._tool_manager.execute(step.tool_name, **step.parameters)
             data = tool_result.unwrap()
-            self._logger.info("Step %s 성공", step.id)
+
+            # Log success with result summary
+            operation = step.parameters.get("operation", "")
+            result_summary = self._summarize_tool_result(step.tool_name, operation, data)
+            if operation:
+                self._logger.info("[STEP-%s] Success: %s.%s - %s", step.id, step.tool_name, operation, result_summary)
+            else:
+                self._logger.info("[STEP-%s] Success: %s - %s", step.id, step.tool_name, result_summary)
             return StepResult(
                 step_id=step.id,
                 outcome=StepOutcome.SUCCESS,
@@ -48,8 +89,8 @@ class StepExecutor:
         except ToolError as exc:
             message = str(exc)
             outcome, category = self._classify_tool_error(message)
-            log_action = "재시도" if outcome == StepOutcome.RETRY else "재계획"
-            self._logger.warning("Step %s 실패(%s 필요): %s", step.id, log_action, message)
+            log_action = "retry" if outcome == StepOutcome.RETRY else "replan"
+            self._logger.warning("[STEP-%s] Failed (%s): %s", step.id, log_action, message)
             return StepResult(
                 step_id=step.id,
                 outcome=outcome,
@@ -84,14 +125,13 @@ class StepExecutor:
             if self._conversation_memory
             else "(최근 대화 기록 없음)"
         )
-        self._logger.debug("Dialogue step memory snapshot:\n%s", memory_text)
         prompt = self._build_dialogue_prompt(
             step.description,
             context,
             latest_data=latest_data,
             memory=memory_text,
         )
-        self._logger.debug("Generating direct response for step %s", step.id)
+        self._logger.debug("[STEP-%s] Generating dialogue response", step.id)
         try:
             llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
@@ -106,7 +146,7 @@ class StepExecutor:
         context.record_token_usage(llm_response.metadata, category="final")
         message = llm_response.text
 
-        self._logger.info("Step %s 대화 응답 완료", step.id)
+        self._logger.info("[STEP-%s] Dialogue response complete", step.id)
         return StepResult(
             step_id=step.id,
             outcome=StepOutcome.SUCCESS,
@@ -170,14 +210,13 @@ class StepExecutor:
             if self._conversation_memory
             else "(최근 대화 기록 없음)"
         )
-        self._logger.debug("Final response memory snapshot:\n%s", memory_text)
         prompt = self._build_dialogue_prompt(
             step_description,
             context,
             latest_data=latest_data,
             memory=memory_text,
         )
-        self._logger.debug("Generating final response summary")
+        self._logger.debug("[RESULT] Generating final response")
         try:
             llm_response = self._brain.generate_text(prompt, temperature=0.6)
         except EngineError as exc:
@@ -260,3 +299,106 @@ class StepExecutor:
             return StepOutcome.FAILED, "authentication"
 
         return StepOutcome.FAILED, "tool_error"
+
+    def _validate_parameters(self, params: Dict[str, Any]) -> Optional[str]:
+        """Detect placeholder patterns in parameters."""
+        FORBIDDEN_PATTERNS = ["<", ">", "{{", "}}", "placeholder", "플레이스홀더", "동적으로", "결정"]
+
+        for key, value in params.items():
+            if isinstance(value, str):
+                if any(pattern in value.lower() for pattern in FORBIDDEN_PATTERNS):
+                    return f"Parameter '{key}' contains placeholder: '{value}'"
+            elif isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, str) and any(p in item.lower() for p in FORBIDDEN_PATTERNS):
+                        return f"Parameter '{key}[{i}]' contains placeholder: '{item}'"
+
+        # UUID validation for known fields
+        if "page_id" in params:
+            page_id = params["page_id"]
+            if not self._is_valid_uuid(page_id):
+                return f"page_id '{page_id}' is not a valid UUID"
+
+        return None
+
+    def _is_valid_uuid(self, value: str) -> bool:
+        """Check if string is a valid UUID v4 or Notion page ID format."""
+        import re
+        # Notion IDs can be with or without hyphens, 32 hex chars
+        NOTION_ID_PATTERN = r'^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$'
+        # Also accept 32 hex chars without hyphens
+        NOTION_ID_NO_HYPHEN = r'^[0-9a-f]{32}$'
+
+        return bool(
+            re.match(NOTION_ID_PATTERN, value, re.IGNORECASE) or
+            re.match(NOTION_ID_NO_HYPHEN, value, re.IGNORECASE)
+        )
+
+    def _log_tool_parameters(self, step: PlanStep) -> None:
+        """Log key parameters for the tool call."""
+        import os
+
+        # Key parameters to always log
+        key_params = ["operation", "query", "title", "page_id", "filter", "limit", "app"]
+
+        if os.getenv("LOG_TOOL_PARAMS") == "true":
+            # Log all parameters
+            self._logger.debug("[STEP-%s] Calling %s with params: %s", step.id, step.tool_name, step.parameters)
+        else:
+            # Log only key parameters
+            filtered_params = {k: v for k, v in step.parameters.items() if k in key_params}
+            if filtered_params:
+                self._logger.debug("[STEP-%s] Calling %s with %s", step.id, step.tool_name, filtered_params)
+
+    def _summarize_tool_result(self, tool_name: str, operation: str, data: Any) -> str:
+        """Generate a concise summary of the tool execution result."""
+        import os
+
+        if os.getenv("LOG_TOOL_RESULTS") == "true":
+            # Return full data (truncated)
+            return str(data)[:200]
+
+        if not isinstance(data, dict):
+            return str(data)[:50]
+
+        # Notion-specific summaries
+        if tool_name == "notion":
+            if operation in ["list_tasks", "list_projects", "list_todos"]:
+                # Notion always uses "items" key for all list operations
+                if "items" in data and isinstance(data["items"], list):
+                    count = len(data["items"])
+                    # Count items without relations
+                    no_relation_count = sum(
+                        1 for item in data["items"]
+                        if not item.get("relations") or len(item.get("relations", [])) == 0
+                    )
+                    if no_relation_count > 0:
+                        return f"Found {count} items ({no_relation_count} without relations)"
+                    return f"Found {count} items"
+
+            elif operation in ["create_task", "update_task", "create_todo", "update_todo"]:
+                page_id = data.get("id", "unknown")
+                title = data.get("title", "")
+                return f"Modified '{title[:30]}...' (ID: {page_id[:8]}...)"
+
+        # File tool summaries
+        elif tool_name == "file":
+            if operation == "list":
+                if "files" in data and isinstance(data["files"], list):
+                    return f"Found {len(data['files'])} files"
+            elif operation == "read":
+                content_len = len(data.get("content", ""))
+                return f"Read {content_len} chars"
+
+        # Apple tool summaries
+        elif tool_name == "apple":
+            if "count" in data:
+                return f"Found {data['count']} items"
+            elif "success" in data:
+                return "Success"
+
+        # Generic summary
+        if "id" in data:
+            return f"ID: {data['id'][:20]}"
+
+        return "OK"

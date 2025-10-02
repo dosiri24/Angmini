@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from difflib import SequenceMatcher
 from enum import Enum
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -136,6 +137,7 @@ class ExecutionContext:
     step_started_at: Dict[int, datetime] = field(default_factory=dict)
     events: List[PlanEvent] = field(default_factory=list)
     step_outcomes: Dict[int, str] = field(default_factory=dict)
+    structured_observations: List[StructuredObservation] = field(default_factory=list)
     thinking_tokens: int = 0
     response_tokens: int = 0
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -257,3 +259,64 @@ class ExecutionContext:
         else:
             self.thinking_tokens += total_tokens
             token_stats["thinking_tokens"] += total_tokens
+
+    def add_structured_observation(self, obs: StructuredObservation) -> None:
+        """Store structured observation for later queries."""
+        self.structured_observations.append(obs)
+
+    def get_observation_by_tool(self, tool: str) -> Optional[StructuredObservation]:
+        """Get most recent observation from specific tool."""
+        for obs in reversed(self.structured_observations):
+            if obs.tool_name == tool:
+                return obs
+        return None
+
+    def calculate_progress(self) -> float:
+        """Estimate goal completion (0.0 to 1.0)."""
+        if not self.plan_steps:
+            return 0.0
+
+        completed = sum(1 for step in self.plan_steps if step.status == PlanStepStatus.DONE)
+        total = len(self.plan_steps)
+
+        # Bonus: Check if we've made state changes (not just reads)
+        has_modifications = any(
+            event.data and event.data.get("operation") in ["create", "update", "delete", "create_task", "update_task"]
+            for event in self.events if isinstance(event, StepCompletedEvent)
+        )
+
+        base_progress = completed / total if total > 0 else 0.0
+
+        # If all steps are done but no modifications made, progress is only 50%
+        if base_progress == 1.0 and not has_modifications:
+            return 0.5
+
+        return base_progress
+
+
+@dataclass
+class StructuredObservation:
+    """Parsed observation data for easy LLM access."""
+    step_id: int
+    tool_name: str
+    operation: str
+    items: List[Dict[str, Any]]  # Normalized results
+    metadata: Dict[str, Any]
+
+    def get_ids(self) -> List[str]:
+        """Extract all IDs from items."""
+        return [item.get("id") for item in self.items if "id" in item]
+
+    def find_by_title(self, query: str) -> Optional[Dict[str, Any]]:
+        """Fuzzy match item by title."""
+        best_match = None
+        best_score = 0.0
+
+        for item in self.items:
+            title = item.get("title", "")
+            score = SequenceMatcher(None, query.lower(), title.lower()).ratio()
+            if score > best_score:
+                best_score = score
+                best_match = item
+
+        return best_match if best_score > 0.7 else None

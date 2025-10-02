@@ -111,6 +111,51 @@ class NotionTool(ToolBlueprint):
         },
     }
 
+    examples = [
+        {
+            "description": "List tasks with empty project relations",
+            "parameters": {
+                "operation": "list_tasks",
+                "filter": {
+                    "property": "경험/프로젝트",
+                    "relation": {"is_empty": True}
+                }
+            }
+        },
+        {
+            "description": "List all available projects",
+            "parameters": {
+                "operation": "list_projects"
+            }
+        },
+        {
+            "description": "Update task with project relation",
+            "parameters": {
+                "operation": "update_task",
+                "page_id": "abc123de-f456-7890-abcd-ef1234567890",
+                "relations": ["22eddd5c-74a0-8077-940d-f80c70d1648d"]
+            }
+        },
+        {
+            "description": "Create new task with due date",
+            "parameters": {
+                "operation": "create_task",
+                "title": "Complete project report",
+                "due_date": "2025-10-15T23:59:59",
+                "status": "Not started"
+            }
+        }
+    ]
+
+    pitfalls = [
+        "❌ Do NOT use find_project - it's deprecated and fails with 'Name' property error",
+        "❌ Do NOT use placeholder values like '<step 1 result>' - use actual UUIDs from observations",
+        "❌ Do NOT create multi-step plans with forward references - plan one step at a time",
+        "✅ ALWAYS use list_projects instead of find_project, then match by title in your reasoning",
+        "✅ ALWAYS copy exact UUIDs from observation data (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)",
+        "✅ Relations must be an array of UUID strings, not a single string"
+    ]
+
     ENV_PRIMARY_TOKEN = "NOTION_API_KEY"
     ENV_FALLBACK_TOKEN = "NOTION_INTEGRATION_TOKEN"
     ENV_TODO_DATABASE = "NOTION_TODO_DATABASE_ID"
@@ -185,6 +230,65 @@ class NotionTool(ToolBlueprint):
             },
             optional_keys={"status", "notes", "relation"},
         )
+
+    def validate_parameters(self, **kwargs: Any) -> tuple[bool, Optional[str]]:
+        """Validate parameters before execution with helpful hints."""
+        import re
+
+        operation = kwargs.get("operation", "").strip().lower()
+
+        # Block deprecated find_project
+        if operation == "find_project":
+            return (
+                False,
+                "❌ Operation 'find_project' is deprecated due to property errors.\n"
+                "💡 Use 'list_projects' instead, then match by title in your reasoning.\n"
+                "Example: list_projects → filter results → use matched project ID"
+            )
+
+        # Validate UUID format for page_id
+        if "page_id" in kwargs:
+            page_id = kwargs["page_id"]
+            if not self._is_valid_uuid(str(page_id)):
+                return (
+                    False,
+                    f"❌ Invalid page_id format: '{page_id}'\n"
+                    f"💡 Must be a valid UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)\n"
+                    f"💡 Copy exact UUID from observation data, do NOT use placeholders"
+                )
+
+        # Validate UUID format for relations
+        if "relations" in kwargs:
+            relations = kwargs["relations"]
+            if not isinstance(relations, list):
+                return (
+                    False,
+                    f"❌ 'relations' must be an array, not {type(relations).__name__}\n"
+                    f"💡 Use: \"relations\": [\"uuid1\", \"uuid2\"]"
+                )
+
+            for idx, rel_id in enumerate(relations):
+                if not self._is_valid_uuid(str(rel_id)):
+                    return (
+                        False,
+                        f"❌ Invalid UUID in relations[{idx}]: '{rel_id}'\n"
+                        f"💡 Must be valid UUIDs (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)\n"
+                        f"💡 Copy exact UUIDs from observation data"
+                    )
+
+        return (True, None)
+
+    @staticmethod
+    def _is_valid_uuid(value: str) -> bool:
+        """Check if string is a valid UUID format."""
+        import re
+        uuid_pattern = re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            re.IGNORECASE
+        )
+        # Also accept compact format (no hyphens)
+        compact_pattern = re.compile(r'^[0-9a-f]{32}$', re.IGNORECASE)
+        return bool(uuid_pattern.match(value) or compact_pattern.match(value))
 
     def run(self, **kwargs: Any) -> ToolResult:
         operation = self._canonical_operation(kwargs.get("operation"))

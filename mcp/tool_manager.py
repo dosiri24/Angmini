@@ -23,7 +23,6 @@ class ToolManager:
         if name in self._tools:
             self._logger.warning("Tool '%s'이 이미 등록되어 있어 새 인스턴스로 교체합니다.", name)
         self._tools[name] = tool
-        self._logger.debug("Tool '%s' 등록 완료", name)
 
     def unregister(self, name: str) -> None:
         if name not in self._tools:
@@ -33,7 +32,6 @@ class ToolManager:
 
     def execute(self, name: str, **kwargs: Any) -> ToolResult:
         tool = self.get(name)
-        self._logger.info("Tool '%s' 실행", name)
         return tool(**kwargs)
 
     def get(self, name: str) -> ToolBlueprint:

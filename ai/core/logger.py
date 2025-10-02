@@ -65,6 +65,9 @@ def setup_logging(level: str = "INFO", *, log_dir: str | Path | None = None) -> 
         for handler in handlers:
             root_logger.addHandler(handler)
 
+        # Configure external library loggers to reduce noise
+        _configure_external_loggers()
+
         _CONFIGURED = True
     else:
         for handler in root_logger.handlers:
@@ -114,6 +117,22 @@ def _coerce_level(level: str) -> int:
     if level_name.isdigit():
         return int(level_name)
     return logging.INFO
+
+
+def _configure_external_loggers() -> None:
+    """Suppress verbose logs from external libraries."""
+    external_loggers = [
+        "urllib3",
+        "urllib3.connectionpool",
+        "faiss",
+        "faiss.loader",
+        "httpx",
+        "httpcore",
+        "huggingface_hub",
+        "transformers",
+    ]
+    for logger_name in external_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
 
 
 def _supports_colour(stream) -> bool:

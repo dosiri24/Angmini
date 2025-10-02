@@ -31,16 +31,12 @@ def main() -> None:
     setup_logging(config.log_level)
     logger = get_logger(__name__)
     log_file = session_log_path()
-    if log_file:
-        logger.debug("Session log file initialised at %s", log_file)
     logger.info("Launching Personal AI Assistant (interface=%s)", config.default_interface)
     logger.debug(
-        "Configuration loaded (model=%s, gemini_key_present=%s, discord_token_present=%s)",
+        "Config: model=%s, log=%s",
         config.gemini_model,
-        bool(config.gemini_api_key),
-        bool(config.discord_bot_token),
+        log_file or "console-only",
     )
-    logger.debug("Configuration env path: %s", config.env_path or "<auto>")
 
     try:
         interface_handler = _resolve_interface(config.default_interface)

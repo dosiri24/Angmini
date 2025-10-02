@@ -93,8 +93,11 @@ class GoalExecutor:
         base_dir = template_dir or Path(__file__).resolve().parent / "prompt_templates"
         self._system_prompt = (base_dir / "system_prompt.md").read_text(encoding="utf-8")
         self._react_prompt_template = (base_dir / "react_prompt.md").read_text(encoding="utf-8")
+        examples_path = base_dir / "planning_examples.md"
+        self._planning_examples = examples_path.read_text(encoding="utf-8") if examples_path.exists() else ""
 
     def run(self, goal: str) -> ExecutionContext:
+        self._logger.info("[PLANNING] User request: %s", goal)
         context = ExecutionContext(goal=goal)
         self._scratchpad.clear()
         self._scratchpad.add(f"goal established: {goal}")
@@ -110,7 +113,6 @@ class GoalExecutor:
             step.mark_in_progress()
             context.note_step_started(step.id)
             attempt = context.increment_attempt(step.id)
-            self._logger.info("Executing step %s (attempt %s)", step.id, attempt)
             self._scratchpad.add(f"executing step #{step.id}: {step.description}")
 
             self._safety_guard.note_step()
@@ -136,13 +138,22 @@ class GoalExecutor:
     def _update_plan(self, context: ExecutionContext, reason: Optional[str] = None) -> None:
         available_tools = self._tool_manager.list()
         prompt = self._build_plan_prompt(context.goal, available_tools, context, reason)
-        self._logger.debug("Plan prompt generated:\n%s", prompt)
+        if os.getenv("LOG_PROMPTS") == "true":
+            self._logger.debug("Plan prompt generated:\n%s", prompt)
+        else:
+            self._logger.debug("[PLANNING] Prompt generated (length=%d chars)", len(prompt))
         llm_response = self._brain.generate_text(prompt)
         context.record_token_usage(llm_response.metadata, category="thinking")
-        self._logger.debug("Plan response raw: %s", llm_response.text)
+        if os.getenv("LOG_PROMPTS") == "true":
+            self._logger.debug("Plan response raw: %s", llm_response.text)
+        else:
+            self._logger.debug("[PLANNING] Response received (length=%d chars)", len(llm_response.text))
         steps = self._parse_plan_response(llm_response.text)
         if not steps:
             raise EngineError("LLM이 빈 계획을 반환했습니다.")
+
+        # Log plan summary
+        self._log_plan_summary(steps)
 
         context.plan_steps = steps
         context.attempt_counts.clear()
@@ -194,27 +205,40 @@ class GoalExecutor:
             memory_insights = "\n".join(str(note) for note in memory_notes_list[-3:])
         else:
             memory_insights = "(최근 메모리 검색 없음)"
-        # Build latest observation JSON snapshot to help the LLM pick concrete IDs without re-asking
-        latest_event = None
-        for event in reversed(context.events):
-            if isinstance(event, StepCompletedEvent):
-                latest_event = event
-                break
-        latest_data_text = "(없음)"
-        if latest_event is not None:
-            matched_step = next(
-                (step for step in context.plan_steps if step.id == latest_event.step_id),
-                None,
+        # Format all observations with structured data to help LLM use concrete IDs
+        all_observations = self._format_all_observations(context)
+
+        # Add actionability hint if we have enough data
+        observations_count = sum(
+            1 for event in context.events
+            if isinstance(event, StepCompletedEvent) and event.data
+        )
+
+        if observations_count >= 2:
+            actionability_hint = (
+                f"\n{'='*80}\n"
+                f"🚨 CRITICAL INSTRUCTION - READ CAREFULLY 🚨\n"
+                f"{'='*80}\n"
+                f"당신은 이미 {observations_count}개의 관찰 데이터를 수집했습니다.\n"
+                f"더 이상 조회 작업을 생성하지 마세요!\n\n"
+                f"✅ 반드시 해야 할 일:\n"
+                f"  1. '완료된 단계의 관찰 데이터' 섹션을 확인하세요\n"
+                f"  2. Tasks 섹션과 Projects 섹션에서 ID를 추출하세요\n"
+                f"  3. 작업 제목과 프로젝트 제목을 매칭하세요 (키워드 기반)\n"
+                f"  4. update_task 작업을 생성하세요 (구체적인 page_id와 relations 사용)\n\n"
+                f"❌ 절대 하지 말아야 할 일:\n"
+                f"  - list_tasks, list_projects 같은 조회 작업 생성 금지\n"
+                f"  - 플레이스홀더(<...>, {{...}}) 사용 금지\n"
+                f"  - '정보가 부족하다'는 평가 금지 (이미 충분한 데이터가 있음)\n"
+                f"{'='*80}\n\n"
             )
-            summary = summarize_step_result(matched_step, latest_event.data)
-            if matched_step is not None:
-                latest_data_text = f"#{matched_step.id} {summary}"
-            else:
-                latest_data_text = summary
+        else:
+            actionability_hint = ""
 
         # Attach request timestamp (Asia/Seoul) to guide due_date calculations
         now_seoul = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%dT%H:%M:%S")
-        self._logger.debug("Conversation memory snapshot:\n%s", memory_block)
+        if memory_block and "(최근 대화 기록 없음)" not in memory_block:
+            self._logger.debug("[PLANNING] Conversation memory: %d chars", len(memory_block))
         reason_block = f"이전에 실패한 이유: {reason}\n" if reason else ""
         return (
             f"{self._system_prompt}\n\n"
@@ -225,17 +249,13 @@ class GoalExecutor:
             f"최근 메모리 검색 요약:\n{memory_insights}\n\n"
             f"현재 계획 체크리스트:\n{context.as_plan_checklist() or '(계획 없음)'}\n\n"
             f"최근 실패 로그:\n{context.fail_log_summary()}\n\n"
-            f"최근 관찰 데이터(JSON):\n{latest_data_text}\n\n"
-            "먼저 사용자 발화를 분석해 대화/작업/애매 여부를 스스로 판단하세요. 대화라고 판단되면 도구를 호출하지 말고 자연스럽게 응답하세요.\n"
-            "사용자는 현재 상황을 충분히 이해하고 필요한 지시를 모두 전달했습니다. 스스로 판단해 목표 달성에 필요한 단계와 도구를 선택하세요.\n"
-            "중요: 계획은 반드시 사용자 목표를 실제로 달성하는 최종 실행 단계를 포함해야 합니다.\n"
-            "- 조회로 끝내지 말고, 불확실하더라도 합리적 근거를 들어 필요한 쓰기/수정 액션(update_task/create_task 등)을 포함하세요.\n"
-            "- Notion 투두 생성 요청이라면 최종 단계에 'create_task'가 포함되어야 합니다.\n"
-            "- 단계 수는 2~3단계 이내로 간결하게 구성하세요(조회 → 선택 → 생성). 가능하면 선택과 업데이트를 한 단계로 합치세요.\n"
-            "- Notion update_task는 page_id와 판단한 관계만으로도 안전하게 실행되며, 관계가 없으면 제목/메모를 기준으로 자동 매칭을 시도합니다.\n"
-            "- 예시 플로우: [1] list_tasks로 비어있는 항목 확인 → [2] Reason에 선택 근거를 남기고 update_task로 관계를 채움.\n"
-            "- Notion create_task는 사용자가 명확히 요청한 todo에만 사용하고, 제목은 원래 표현을 유지하며 추가 설명을 붙이지 마세요.\n"
-            "- 확신이 부족하다면 Reason에 불확실성을 적고, 사용자에게 \"대화형 응답 + '..까지 도와드릴까요?'\" 형태로 확인을 요청하세요. 사용자 승인을 받으면 해당 실행 단계를 포함하고, 결과를 Observation에 기록해 이후 메모리에 반영하세요.\n\n"
+            f"완료된 단계의 관찰 데이터:\n{all_observations}\n\n"
+            f"{actionability_hint}"
+            + (f"## Planning Examples\n{self._planning_examples}\n\n" if self._planning_examples else "")
+            + "다음 단계 계획을 생성하세요:\n"
+            "- 위 관찰 데이터에서 구체적인 ID/UUID를 사용하세요\n"
+            "- 플레이스홀더(<...>, {{...}})는 절대 사용하지 마세요\n"
+            "- 정보가 부족하면 조회를 위한 단일 단계만 생성하세요\n\n"
             f"{reason_block}"
             "JSON 배열 형식의 새로운 계획을 생성하세요.\n"
             "각 항목은 {\"id\": number, \"description\": string, \"tool\": string | null, \"parameters\": object, \"status\": string} 구조여야 합니다.\n"
@@ -335,6 +355,10 @@ class GoalExecutor:
             summary = summarize_step_result(step, result.data)
             context.record_step_outcome(step.id, summary)
 
+            # Log progress
+            progress = context.calculate_progress()
+            self._logger.info("[EXECUTION] Progress: %d%%", int(progress * 100))
+
             if self._should_request_follow_up_plan(context, step):
                 auto_replans = int(context.metadata.get("auto_followup_replans", 0))
                 if auto_replans >= self.MAX_AUTO_FOLLOW_UP_REPLANS:
@@ -343,7 +367,19 @@ class GoalExecutor:
                     )
                 context.metadata["auto_followup_replans"] = auto_replans + 1
                 context.append_scratch("triggering follow-up plan after read-only step")
-                reason = "조회 결과만 확보되어 후속 실행 계획이 필요합니다."
+
+                # Build more explicit reason based on what we have
+                observations_with_data = sum(
+                    1 for event in context.events
+                    if isinstance(event, StepCompletedEvent) and event.data
+                )
+
+                reason = (
+                    f"⚠️ 중요: 이미 {observations_with_data}개의 관찰 데이터를 수집했습니다.\n"
+                    f"더 이상 조회 작업(list_tasks, list_projects)을 생성하지 마세요.\n"
+                    f"반드시 write 작업(update_task, create_task)을 포함한 계획을 생성하세요.\n"
+                    f"관찰 데이터에 있는 정확한 ID를 사용하여 매칭 작업을 수행하세요."
+                )
                 self._update_plan(context, reason=reason)
             return
 
@@ -366,11 +402,25 @@ class GoalExecutor:
 
         if decision.action == "retry":
             step.status = PlanStepStatus.TODO
-            self._logger.info(decision.reason)
+            self._logger.info("[EXECUTION] Retry: %s", decision.reason)
             return
 
         if decision.action == "replan":
-            self._logger.warning(decision.reason)
+            # ✅ NEW: Track replans per step
+            step_replans = context.metadata.get(f"replans_step_{step.id}", 0)
+            if step_replans >= 2:
+                # After 2 replans for same step, escalate to user
+                raise EngineError(
+                    f"❌ Step {step.id} failed after {step_replans} replan attempts.\n"
+                    f"🤔 I need your help:\n"
+                    f"- Step goal: {step.description}\n"
+                    f"- Last error: {result.error_reason}\n"
+                    f"- Available data: {self._format_all_observations(context)}\n\n"
+                    f"💡 Please provide missing information or rephrase your request."
+                )
+
+            context.metadata[f"replans_step_{step.id}"] = step_replans + 1
+            self._logger.warning("[PLANNING] Replan triggered: %s", decision.reason)
             self._update_plan(context, reason=decision.reason)
             return
 
@@ -457,6 +507,23 @@ class GoalExecutor:
             for entry in history:
                 if self._is_state_changing_entry(entry):
                     return False
+
+        # Check if we already have enough observations for write operations
+        observations_with_data = sum(
+            1 for event in context.events
+            if isinstance(event, StepCompletedEvent) and event.data
+        )
+
+        # If we have 2+ observations (e.g., tasks + projects), we should act!
+        if observations_with_data >= 2:
+            self._logger.warning(
+                "[PLANNING] Read-only step completed. Have %d observation(s) - next plan MUST include write operations",
+                observations_with_data
+            )
+
+        self._logger.info(
+            "[PLANNING] Requesting follow-up plan: current plan only had read-only operations"
+        )
 
         return True
 
@@ -773,3 +840,124 @@ class GoalExecutor:
             return json.dumps(example, ensure_ascii=False)
         except TypeError:
             return ""
+
+    def _format_all_observations(self, context: ExecutionContext) -> str:
+        """Format all completed steps with their structured data."""
+        if not context.events:
+            return "(No observations yet)"
+
+        # Group observations by tool for better context
+        tasks_obs = []
+        projects_obs = []
+        other_obs = []
+
+        for event in context.events:
+            if not isinstance(event, StepCompletedEvent):
+                continue
+
+            step = next((s for s in context.plan_steps if s.id == event.step_id), None)
+            if not step:
+                continue
+
+            data_str = self._format_observation_data(event.data)
+            obs_text = (
+                f"Step {event.step_id} ({step.tool_name}): {step.description}\n"
+                f"Result:\n{data_str}"
+            )
+
+            # Categorize by tool and operation
+            if step.tool_name == "notion" and event.data:
+                operation = step.parameters.get("operation", "")
+                if "task" in operation:
+                    tasks_obs.append(obs_text)
+                elif "project" in operation:
+                    projects_obs.append(obs_text)
+                else:
+                    other_obs.append(obs_text)
+            else:
+                other_obs.append(obs_text)
+
+        # Organize output for easier LLM parsing
+        sections = []
+        if tasks_obs:
+            sections.append("### Tasks\n" + "\n\n".join(tasks_obs))
+        if projects_obs:
+            sections.append("### Projects\n" + "\n\n".join(projects_obs))
+        if other_obs:
+            sections.append("### Other\n" + "\n\n".join(other_obs))
+
+        # Add matching hint if we have both tasks and projects
+        if tasks_obs and projects_obs:
+            sections.append(
+                "### 💡 Next Step Hint\n"
+                "당신은 Tasks와 Projects 데이터를 모두 수집했습니다.\n"
+                "이제 update_task를 사용하여 작업을 프로젝트에 연결하세요:\n"
+                "1. Tasks의 제목에서 키워드를 추출하세요 (예: 'GPS개론 과제3' → 'GPS개론')\n"
+                "2. Projects에서 해당 키워드를 포함하는 프로젝트를 찾으세요\n"
+                "3. Tasks의 ID (page_id)와 Projects의 ID (relations)를 사용하여 update_task 계획을 생성하세요\n"
+                "4. 여러 작업이 있다면, 각각에 대해 별도의 update_task step을 생성하세요"
+            )
+
+        return "\n\n".join(sections) if sections else "(No observations yet)"
+
+    def _format_observation_data(self, data: Any) -> str:
+        """Format observation data to expose IDs and structured info."""
+        if not data:
+            return "(empty)"
+
+        if isinstance(data, dict):
+            # Check both "items" (Notion) and "results" (generic)
+            items_key = "items" if "items" in data else ("results" if "results" in data else None)
+
+            if items_key:
+                items = data[items_key][:10]  # Show first 10 (increased from 5)
+                if not items:
+                    return "(no items found)"
+
+                formatted = []
+                for idx, item in enumerate(items, 1):
+                    title = item.get("title", "Untitled")
+                    page_id = item.get("id", "no-id")
+
+                    # Include relations if present
+                    relations = item.get("relations", [])
+                    rel_str = f", Relations: {relations}" if relations else ""
+
+                    formatted.append(f"{idx}. {title}\n   ID: {page_id}{rel_str}")
+
+                # Add summary
+                total_count = len(data[items_key])
+                summary_line = f"\nTotal: {total_count} items"
+                return "\n".join(formatted) + summary_line
+
+            # For single operations, show key fields
+            if "id" in data:
+                return f"ID: {data['id']}, URL: {data.get('url', 'N/A')}"
+
+        return str(data)[:500]  # Truncate long responses
+
+    def _log_plan_summary(self, steps: list[PlanStep]) -> None:
+        """Log a concise summary of the generated plan."""
+        if os.getenv("LOG_PLAN_DETAILS") == "true":
+            self._logger.info("[PLANNING] Generated %d step(s):", len(steps))
+            for step in steps:
+                if step.tool_name:
+                    operation = step.parameters.get("operation", "")
+                    tool_desc = f"{step.tool_name}.{operation}" if operation else step.tool_name
+                else:
+                    tool_desc = "dialogue"
+                # Truncate description to 60 chars
+                desc_short = step.description[:60] + "..." if len(step.description) > 60 else step.description
+                self._logger.info("  - Step %d: %s [%s]", step.id, desc_short, tool_desc)
+        else:
+            # Standard mode: show tool + brief description
+            self._logger.info("[PLANNING] Generated %d step(s):", len(steps))
+            for step in steps:
+                if step.tool_name:
+                    operation = step.parameters.get("operation", "")
+                    tool_desc = f"{step.tool_name}.{operation}" if operation else step.tool_name
+                else:
+                    tool_desc = "dialogue"
+                # Truncate description to 50 chars for compact view
+                desc_short = step.description[:50] + "..." if len(step.description) > 50 else step.description
+                self._logger.info("  → Step %d [%s]: %s", step.id, tool_desc, desc_short)
