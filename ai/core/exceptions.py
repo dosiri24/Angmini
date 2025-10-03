@@ -21,3 +21,7 @@ class EngineError(AIProjectError):
 
 class InterfaceError(AIProjectError):
     """Raised when an interface cannot be resolved or executed."""
+
+
+class PromptLoadError(AIProjectError):
+    """Raised when an agent prompt markdown file cannot be loaded or parsed."""

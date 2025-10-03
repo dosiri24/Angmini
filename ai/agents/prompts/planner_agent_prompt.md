@@ -21,9 +21,9 @@
 
 ### 사용 가능한 전문 에이전트
 - **File Agent**: 파일 시스템 작업
-- **Notion Agent**: Notion 워크스페이스 관리
+- **Notion Agent**: Notion 워크스페이스 관리 (경험/프로젝트, todo)
 - **Memory Agent**: 과거 경험 검색
-- **System Agent**: macOS 시스템 작업
+- **Apple Apps Agent**: macOS 어플리케이션 사용 작업
 
 ### 계획 수립 원칙
 1. 사용자 요청 정확히 이해

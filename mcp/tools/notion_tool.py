@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from difflib import SequenceMatcher
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type, List
 from zoneinfo import ZoneInfo
 
 try:
@@ -16,7 +16,11 @@ except ImportError:  # pragma: no cover - dependency missing at runtime
     class APIResponseError(Exception):
         """Fallback error when Notion SDK is unavailable."""
 
+from crewai.tools import BaseTool
+from pydantic import BaseModel, Field, ConfigDict
+
 from ai.core.exceptions import ToolError
+from ai.core.logger import get_logger
 
 from ..tool_blueprint import ToolBlueprint, ToolResult
 
@@ -443,10 +447,18 @@ class NotionTool(ToolBlueprint):
     def _ensure_kst_timezone(self, raw: str) -> str:
         """Ensure datetime strings with time include KST(+09:00) offset.
 
+        별도 지시가 없는 한 모든 시간은 한국 시간(GMT+9, Asia/Seoul)으로 처리합니다.
+
         - If the input is a date only (YYYY-MM-DD), return as-is.
         - If time part exists and a timezone designator (Z or ±HH:MM) is missing,
           append "+09:00" so Notion does not treat it as UTC.
         - If timezone is already present, return as-is.
+
+        Examples:
+            "2025-10-03" → "2025-10-03" (날짜만 있는 경우 그대로 유지)
+            "2025-10-03T15:00:00" → "2025-10-03T15:00:00+09:00" (시간 있으면 KST 추가)
+            "2025-10-03T15:00:00+09:00" → "2025-10-03T15:00:00+09:00" (이미 타임존 있으면 유지)
+            "2025-10-03T15:00:00Z" → "2025-10-03T15:00:00Z" (UTC 명시된 경우 유지)
         """
         text = (raw or "").strip()
         if not text:
@@ -457,15 +469,19 @@ class NotionTool(ToolBlueprint):
         # Time part exists; check for timezone designator
         time_part = text.split("T", 1)[1]
         if time_part.endswith("Z") or time_part.endswith("z"):
+            # UTC로 명시된 경우 그대로 유지 (Notion이 UTC로 처리)
             return text
         if "+" in time_part:
+            # 이미 양수 offset 있음 (예: +09:00, +00:00)
             return text
         # Detect negative offset like -09:00 in time part
         # The time format is HH:MM(:SS[.fff]) optionally followed by offset
         # A '-' in time_part (beyond the hour/minute section) indicates an offset
         if "-" in time_part[2:]:
+            # 음수 offset 있음 (예: -05:00)
             return text
-        # No timezone info → append KST offset
+        # No timezone info → append KST offset (+09:00)
+        # 이것이 기본 동작: 타임존 정보가 없으면 한국 시간(GMT+9)으로 간주
         return f"{text}+09:00"
 
     def _retrieve_task_context(self, client: Any, page_id: str) -> Dict[str, Optional[str]]:
@@ -1068,3 +1084,185 @@ class NotionTool(ToolBlueprint):
         raise ToolError(
             "operation 파라미터는 create_task/list_tasks/update_task/list_projects/find_project 또는 관련 별칭이어야 합니다."
         )
+
+
+# ====================================================================
+# CrewAI Adapter
+# ====================================================================
+
+
+class NotionToolInput(BaseModel):
+    """NotionTool 입력 스키마"""
+    operation: str = Field(..., description="Operation: create_task, list_tasks, update_task, delete_task, search_project")
+    title: Optional[str] = Field(default=None, description="Task title (for create/update)")
+    content: Optional[str] = Field(default=None, description="Task content/description")
+    task_id: Optional[str] = Field(default=None, description="Task ID (for update/delete)")
+    status: Optional[str] = Field(default=None, description="Task status")
+    due_date: Optional[str] = Field(default=None, description="Due date in YYYY-MM-DD format")
+    project_title: Optional[str] = Field(default=None, description="Project title to link")
+    tags: Optional[List[str]] = Field(default=None, description="Tags for the task")
+
+
+class NotionCrewAITool(BaseTool):
+    """CrewAI adapter for NotionTool"""
+    name: str = "Notion 도구"
+    description: str = "Notion API를 통해 할일 생성, 조회, 업데이트, 삭제 및 프로젝트 관리를 수행합니다."
+    args_schema: Type[BaseModel] = NotionToolInput
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
+        try:
+            self._notion_tool = NotionTool()
+            self._enabled = True
+        except Exception as e:
+            # Notion API 키가 없는 경우 등 초기화 실패 처리
+            self._notion_tool = None
+            self._enabled = False
+            self._logger.warning(f"NotionTool 초기화 실패: {e}")
+
+    def _run(
+        self,
+        operation: str,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        task_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None,
+        project_title: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        **kwargs: Any
+    ) -> str:
+        """도구 실행 - NotionTool의 run() 메서드를 호출하여 실제 작업 수행"""
+        # 전체 파라미터 상세 로깅
+        import json
+        all_params = {
+            "operation": operation,
+            "title": title,
+            "content": content,
+            "task_id": task_id,
+            "status": status,
+            "due_date": due_date,
+            "project_title": project_title,
+            "tags": tags,
+            **kwargs
+        }
+        # None 값 제거
+        logged_params = {k: v for k, v in all_params.items() if v is not None}
+        self._logger.info(f"🔧 [NotionCrewAITool] 실행 시작 - 파라미터: {json.dumps(logged_params, ensure_ascii=False, default=str)}")
+
+        if not self._enabled:
+            error_msg = "❌ Notion 도구가 비활성화됨 (API 키 확인 필요)"
+            self._logger.error(f"[NotionCrewAITool] {error_msg}")
+            return error_msg
+
+        # NotionTool의 실제 파라미터로 매핑 (content -> notes, task_id -> page_id)
+        notion_params = {"operation": operation}
+        if title:
+            notion_params["title"] = title
+        if content:
+            notion_params["notes"] = content  # content -> notes 매핑
+        if task_id:
+            notion_params["page_id"] = task_id  # task_id -> page_id 매핑
+        if status:
+            notion_params["status"] = status
+        if due_date:
+            notion_params["due_date"] = due_date
+        # project_title과 tags는 NotionTool에서 직접 지원하지 않음 (무시)
+
+        self._logger.debug(f"[NotionCrewAITool] NotionTool로 전달할 파라미터: {json.dumps(notion_params, ensure_ascii=False, default=str)}")
+
+        try:
+            # NotionTool의 validate_parameters 호출하여 사전 검증
+            is_valid, validation_error = self._notion_tool.validate_parameters(**notion_params)
+            if not is_valid:
+                error_msg = f"❌ 파라미터 검증 실패:\n{validation_error}"
+                self._logger.error(f"[NotionCrewAITool] {error_msg}")
+                return error_msg
+
+            # NotionTool의 run() 메서드 호출
+            self._logger.debug(f"[NotionCrewAITool] NotionTool.run() 호출 중...")
+            result: ToolResult = self._notion_tool.run(**notion_params)
+
+            # 결과 검증 및 상세 로깅
+            if result.success:
+                # 성공 시 데이터 검증
+                if not result.data:
+                    warning_msg = "⚠️ 성공했으나 결과 데이터가 비어있음"
+                    self._logger.warning(f"[NotionCrewAITool] {warning_msg}")
+                    return f"✅ 작업 완료 (데이터 없음)"
+
+                # 결과 데이터 상세 로깅 (200자 제한)
+                data_str = json.dumps(result.data, ensure_ascii=False, default=str)
+                data_preview = data_str[:200] + ("..." if len(data_str) > 200 else "")
+                self._logger.info(f"✅ [NotionCrewAITool] 성공 - 결과: {data_preview}")
+
+                # 성공 메시지 포맷팅
+                return self._format_success_response(result.data, operation)
+            else:
+                # 실패 시 에러 상세 로깅 (200자 제한)
+                error_str = str(result.error) if result.error else "알 수 없는 에러"
+                error_preview = error_str[:200] + ("..." if len(error_str) > 200 else "")
+                self._logger.error(f"❌ [NotionCrewAITool] 실패 - 에러: {error_preview}")
+                return f"❌ Notion 작업 실패: {error_preview}"
+
+        except ToolError as e:
+            # ToolError는 NotionTool에서 발생한 예상된 에러
+            error_str = str(e)[:200]
+            self._logger.error(f"❌ [NotionCrewAITool] ToolError - {error_str}")
+            return f"❌ Notion 도구 에러: {error_str}"
+        except Exception as e:
+            # 예상치 못한 에러
+            error_str = str(e)[:200]
+            self._logger.exception(f"❌ [NotionCrewAITool] 예상치 못한 에러 - {error_str}")
+            return f"❌ 도구 실행 중 예외 발생: {error_str}"
+
+    def _format_success_response(self, data: Any, operation: str) -> str:
+        """성공 응답을 사용자 친화적인 형식으로 변환"""
+        import json
+
+        if isinstance(data, dict):
+            # list_tasks/list_todos 결과
+            if "items" in data:
+                items = data["items"]
+                if not items:
+                    return "✅ 할일이 없습니다."
+                output = f"✅ 할일 {len(items)}개 조회:\n"
+                for item in items:
+                    output += f"  - [{item.get('status', '?')}] {item.get('title', '제목 없음')}"
+                    if item.get('date'):
+                        output += f" (마감: {item['date']})"
+                    output += "\n"
+                return output
+
+            # create_task/update_task 결과
+            elif "id" in data:
+                task_id = data['id']
+                url = data.get('url', '')
+                op_display = {
+                    "create_task": "할일 생성",
+                    "update_task": "할일 업데이트",
+                    "create_todo": "할일 생성",
+                    "update_todo": "할일 업데이트",
+                }.get(operation, "작업")
+
+                result_msg = f"✅ {op_display} 완료\n"
+                result_msg += f"  - ID: {task_id}\n"
+                if url:
+                    result_msg += f"  - URL: {url}\n"
+
+                # relations가 있으면 표시
+                if data.get('relations'):
+                    result_msg += f"  - 연결된 프로젝트: {len(data['relations'])}개\n"
+
+                self._logger.info(f"[NotionCrewAITool] {op_display} 성공 - ID: {task_id}")
+                return result_msg
+
+            # 기타 dict 응답
+            else:
+                return f"✅ 성공:\n{json.dumps(data, indent=2, ensure_ascii=False)}"
+        else:
+            # dict가 아닌 응답
+            return f"✅ 성공: {data}"
