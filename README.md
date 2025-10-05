@@ -133,75 +133,113 @@ DEFAULT_INTERFACE=discord # Discord 모드
 ```
 Angmini/
 ├── main.py                     # 애플리케이션 진입점
+├── angmini_cli.py             # CLI 편의 스크립트
 ├── requirements.txt            # Python 의존성 (CrewAI 포함)
 ├── .env.example               # 환경변수 템플릿
 ├── CLAUDE.md                  # AI 어시스턴트 개발 가이드
+├── IMPLEMENTATION_STATUS.md   # 구현 현황 및 로드맵
 ├── README.md                  # 프로젝트 개요 (현재 파일)
+├── LICENSE                    # MIT 라이선스
+│
 ├── ai/                        # AI 엔진 핵심
 │   ├── ai_brain.py           # Gemini API 연동 클래스
 │   ├── core/                 # 핵심 모듈
 │   │   ├── config.py         # 환경변수 및 설정 관리
 │   │   ├── logger.py         # 로깅 시스템
 │   │   └── exceptions.py     # 커스텀 예외 클래스
-│   ├── memory/               # 메모리 시스템
-│   │   ├── embedding.py      # Qwen3 임베딩 처리
-│   │   ├── factory.py        # 메모리 팩토리
-│   │   ├── service.py        # 메모리 서비스
-│   │   ├── pipeline.py       # 메모리 파이프라인
-│   │   ├── memory_curator.py # LLM 기반 메모리 큐레이터
-│   │   ├── cascaded_retriever.py # 다단계 검색기
+│   ├── memory/               # 지능형 메모리 시스템
+│   │   ├── service.py        # 메모리 서비스 (고수준 API)
+│   │   ├── factory.py        # 메모리 컴포넌트 팩토리
+│   │   ├── pipeline.py       # 메모리 처리 파이프라인
+│   │   ├── embedding.py      # Qwen3 임베딩 엔진
+│   │   ├── memory_curator.py # LLM 기반 자동 큐레이터
+│   │   ├── cascaded_retriever.py # 다단계 검색 엔진
+│   │   ├── hybrid_retriever.py   # 하이브리드 검색기
 │   │   ├── deduplicator.py   # 중복 제거기
+│   │   ├── importance_scorer.py  # 중요도 평가기
+│   │   ├── retention_policy.py   # 보존 정책 관리
+│   │   ├── metrics.py        # 메모리 성능 메트릭스
+│   │   ├── memory_records.py # 메모리 레코드 모델
+│   │   ├── snapshot_extractor.py # 실행 스냅샷 추출
+│   │   ├── entity/           # 엔티티 기반 메모리 (진행 중)
+│   │   ├── prompts/          # LLM 프롬프트 템플릿
 │   │   └── storage/          # 저장소 구현
-│   │       ├── repository.py # 메모리 리포지토리
-│   │       ├── sqlite_store.py # SQLite 저장소
+│   │       ├── repository.py # 통합 메모리 리포지토리
+│   │       ├── sqlite_store.py # SQLite 메타데이터 저장소
 │   │       └── vector_index.py # FAISS 벡터 인덱스
-│   └── agents/               # CrewAI 에이전트 구현
-│       ├── __init__.py       # AgentFactory
-│       ├── base_agent.py     # 에이전트 기본 클래스
-│       ├── planner_agent.py  # 계획 및 조율 매니저
-│       ├── file_agent.py     # 파일 시스템 전문가
-│       ├── notion_agent.py   # Notion 관리 전문가
-│       ├── memory_agent.py   # 메모리 관리 전문가
-│       └── apple_apps_agent.py # Apple 시스템 통합 전문가
-├── crew/                     # CrewAI Crew 설정
-│   ├── crew_config.py        # Crew 초기화 및 설정
-│   └── task_factory.py       # Task 생성 팩토리
+│   ├── agents/               # CrewAI 에이전트 구현
+│   │   ├── __init__.py       # AgentFactory
+│   │   ├── base_agent.py     # 에이전트 기본 클래스
+│   │   ├── planner_agent.py  # 계획 및 조율 매니저
+│   │   ├── file_agent.py     # 파일 시스템 전문가
+│   │   ├── notion_agent.py   # Notion 관리 전문가
+│   │   ├── memory_agent.py   # 메모리 관리 전문가
+│   │   └── apple_apps_agent.py # Apple 시스템 통합 전문가
+│   ├── crew/                 # CrewAI Crew 설정
+│   │   ├── crew_config.py    # Crew 초기화 및 실행 조율
+│   │   └── task_factory.py   # Task 생성 팩토리
+│   └── shared/               # 공유 컴포넌트
+│
 ├── mcp/                      # MCP 도구 생태계
 │   ├── tool_blueprint.py     # 도구 기본 추상 클래스
-│   ├── tool_manager.py       # 도구 등록/실행 관리
 │   ├── apple_mcp_manager.py  # Apple MCP 서버 관리자
 │   └── tools/                # 구체적 도구 구현
 │       ├── file_tool.py      # 파일 시스템 도구 + CrewAI 어댑터
 │       ├── notion_tool.py    # Notion API 도구 + CrewAI 어댑터
 │       ├── apple_tool.py     # Apple 도구 + CrewAI 어댑터
 │       └── memory_tool.py    # 메모리 도구 + CrewAI 어댑터
-├── interface/                # 사용자 인터페이스
+│
+├── interface/                # 다중 인터페이스 지원
 │   ├── cli.py               # CLI (CrewAI 통합)
 │   ├── discord_bot.py       # Discord Bot (CrewAI 통합)
-│   ├── streaming.py         # 스트리밍 인터페이스
+│   ├── streaming.py         # 실시간 스트리밍 인터페이스
 │   └── summary.py           # 실행 결과 요약 포맷터
-├── external/                # 외부 의존성
-│   └── apple-mcp/           # Apple MCP 서버 (Git 서브모듈)
-│       └── dist/index.js    # 빌드된 Apple MCP 서버
+│
+├── external/                # 외부 의존성 (Git 서브모듈)
+│   └── apple-mcp/           # Apple MCP 서버 (TypeScript)
+│       ├── dist/index.js    # 빌드된 Apple MCP 서버
+│       └── package.json     # Node.js 패키지 설정
+│
 ├── bin/                     # 실행 스크립트
-│   └── angmini              # CLI 실행 스크립트
+│   └── angmini              # CLI 실행 래퍼 스크립트
+│
 ├── scripts/                 # 유틸리티 스크립트
 │   └── gemini_quickcheck.py # Gemini API 연결 테스트
+│
+├── tests/                   # 테스트 스위트
+│   ├── test_file_tool.py    # 파일 도구 테스트
+│   └── ...                  # 기타 테스트 파일
+│
 ├── docs/                    # 프로젝트 문서
-│   ├── USAGE.md
-│   ├── TESTING.md
-│   ├── INSTALL.md
-│   ├── CREWAI_MIGRATION_PLAN.md
-│   ├── memory_maintenance.md
-│   └── APPLE_TOOL_GUIDE.md
-├── claudedocs/              # AI 조사 보고서
+│   ├── USAGE.md             # 사용 가이드
+│   ├── TESTING.md           # 테스트 가이드
+│   ├── INSTALL.md           # 설치 가이드
+│   ├── CREWAI_MIGRATION_PLAN.md # ReAct → CrewAI 마이그레이션
+│   ├── memory_maintenance.md    # 메모리 시스템 유지보수
+│   └── APPLE_TOOL_GUIDE.md      # Apple MCP 사용법
+│
+├── claudedocs/              # AI 조사 보고서 및 분석
 │   └── research_ai_agent_systems_20251002.md
-├── logs/                    # 로그 파일들
-└── data/                    # 데이터 저장소
-    └── memory/              # 메모리 데이터베이스
-        ├── memories.db      # SQLite 메모리 데이터베이스
-        ├── memory.ids       # 메모리 ID 인덱스
-        └── memory.index     # FAISS 벡터 인덱스
+│
+├── archive/                 # 레거시 코드 보관
+│   └── react_engine/        # 구 ReAct 엔진 (참고용)
+│
+├── data/                    # 애플리케이션 데이터
+│   └── memory/              # 메모리 시스템 데이터베이스
+│       ├── memories.db      # SQLite 메모리 메타데이터
+│       ├── memory.ids       # 메모리 ID 매핑 인덱스
+│       └── memory.index     # FAISS 벡터 인덱스
+│
+├── logs/                    # 애플리케이션 로그
+│   ├── YYYYMMDD_HHMMSS.log  # 세션별 타임스탬프 로그
+│   └── memory_embedding.log # 메모리 임베딩 로그
+│
+├── .serena/                 # Serena MCP 작업 공간
+│   ├── cache/               # Serena 캐시
+│   └── memories/            # Serena 메모리
+│
+└── .claude/                 # Claude Code 설정
+    └── commands/            # 커스텀 슬래시 커맨드
 ```
 
 ## 🛠️ 기술 스택

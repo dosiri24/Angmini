@@ -44,3 +44,4 @@ tests/stream.py
 
 # Singleton PID files
 .angmini*.pid
+.claude/commands/review-with-codex.md
