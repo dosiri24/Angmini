@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Optional
 import logging
 
 try:
     import discord
+    import certifi
 except ImportError as exc:  # pragma: no cover - optional dependency
     discord = None  # type: ignore[assignment]
     _IMPORT_ERROR = exc
@@ -17,6 +19,7 @@ else:
 from ai.core.config import Config
 from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
+from ai.core.singleton import SingletonGuard
 from ai.memory.factory import create_memory_service
 from ai.ai_brain import AIBrain
 from ai.crew import AngminiCrew
@@ -29,12 +32,22 @@ def run_bot(config: Config) -> None:
             "discord.py 패키지가 설치되어 있지 않습니다. 'pip install discord.py' 후 다시 시도하세요."
         ) from _IMPORT_ERROR
 
+    # 싱글톤 패턴: 중복 실행 방지
+    singleton = SingletonGuard(pid_file_name=".angmini_discord.pid")
+    if not singleton.acquire():
+        raise InterfaceError("Discord 봇 싱글톤 잠금 획득 실패. 이미 실행 중인 인스턴스가 있습니다.")
+
+    # Set SSL certificate path for aiohttp
+    os.environ['SSL_CERT_FILE'] = certifi.where()
+    os.environ['REQUESTS_CA_BUNDLE'] = certifi.where()
+
     token = _coerce_token(config.discord_bot_token)
     intents = discord.Intents.default()
     intents.message_content = True
 
     logger = get_logger(__name__)
     logger.info("Starting Discord bot with CrewAI")
+    logger.debug("SSL certificate path: %s", certifi.where())
 
     # AI Brain 초기화
     try:
@@ -70,9 +83,11 @@ def run_bot(config: Config) -> None:
     try:
         client.run(token)
     except discord.LoginFailure as exc:  # pragma: no cover - runtime error from Discord
+        logger.exception("Discord login failure")
         raise InterfaceError("Discord 봇 로그인에 실패했습니다. 토큰을 다시 확인해주세요.") from exc
     except Exception as exc:  # pragma: no cover - bubble up unexpected failures
-        raise InterfaceError("Discord 봇 실행 중 알 수 없는 오류가 발생했습니다.") from exc
+        logger.exception("Unexpected error during Discord bot execution")
+        raise InterfaceError(f"Discord 봇 실행 중 오류가 발생했습니다: {exc}") from exc
 
 
 def _build_client(
@@ -80,6 +95,8 @@ def _build_client(
     crew: AngminiCrew,
     config: Config,
 ) -> "discord.Client":
+    # SSL certificates are configured via environment variables (SSL_CERT_FILE)
+    # in run_bot() before creating the client
     client = discord.Client(intents=intents)
     logger = get_logger(__name__)
 

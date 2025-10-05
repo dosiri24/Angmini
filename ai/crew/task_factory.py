@@ -24,32 +24,97 @@ class TaskFactory:
         self.memory_service = memory_service
         self.logger = get_logger(__name__)
 
-    def create_tasks_from_input(self, user_input: str) -> List[Task]:
-        """사용자 입력으로부터 Task 리스트 생성 - 100% LLM 기반"""
+    def _classify_intent(self, user_input: str) -> str:
+        """LLM으로 사용자 의도 분류 (메모리 검색 전 실행)"""
+        if not self.planner.ai_brain:
+            return "task_request"  # 안전하게 작업 요청으로 간주
 
-        # 메모리에서 관련 컨텍스트 조회
+        classification_prompt = f"""다음 사용자 입력을 분석하여 의도를 판단하세요.
+
+사용자 입력: {user_input}
+
+의도 분류 기준:
+- simple_conversation: 단순 인사, 일상 대화, 감사 표현 등
+  예시: "안녕", "하이", "고마워", "잘 지내?", "수고했어", "반가워"
+
+- task_request: 명확한 작업 요청이나 질문
+  예시: "파일 목록 보여줘", "과거 작업 찾아줘", "Notion에서 할 일 가져와"
+
+다음 중 정확히 하나만 응답하세요: simple_conversation 또는 task_request"""
+
+        try:
+            response = self.planner.ai_brain.generate_text(
+                classification_prompt,
+                temperature=0.3,
+                max_output_tokens=50
+            )
+            intent = response.text.strip().lower()
+
+            if "simple_conversation" in intent:
+                self.logger.debug(f"의도 분류: 단순 대화 - '{user_input}'")
+                return "simple_conversation"
+            else:
+                self.logger.debug(f"의도 분류: 작업 요청 - '{user_input}'")
+                return "task_request"
+        except Exception as e:
+            self.logger.warning(f"의도 분류 실패: {e}, 기본값(task_request) 사용")
+            return "task_request"
+
+    def create_tasks_from_input(self, user_input: str) -> List[Task]:
+        """사용자 입력으로부터 Task 리스트 생성 - 100% LLM 기반
+
+        1단계: 의도 분류 (simple_conversation vs task_request)
+        2단계: task_request인 경우에만 메모리 검색
+        3단계: Task 생성
+        """
+
+        # 1단계: 의도 분류
+        intent = self._classify_intent(user_input)
+
+        # 2단계: 의도에 따라 메모리 검색 여부 결정
         memory_context = ""
-        if self.memory_service:
+        if intent == "task_request" and self.memory_service:
             try:
+                self.logger.debug(f"메모리 검색 시작 (작업 요청 감지)")
                 search_results = self.memory_service.repository.search(user_input, top_k=3)
                 if search_results:
-                    memory_context = "\n\n### 관련 경험:\n"
-                    for mem, score in search_results:
-                        memory_context += f"- {mem.summary}\n"
-                        if hasattr(mem, 'tools_used') and mem.tools_used:
-                            memory_context += f"  (사용 도구: {', '.join(mem.tools_used)})\n"
+                    memory_context = "\n\n### 📚 관련 경험 (이미 검색 완료)\n"
+                    for i, result in enumerate(search_results, 1):
+                        memory_context += f"\n{i}. {result.summary}\n"
+                        memory_context += f"   - 목표: {result.goal}\n"
+                        if result.outcome:
+                            memory_context += f"   - 결과: {result.outcome}\n"
+                    memory_context += "\n**중요**: 위 내용은 이미 검색된 결과입니다. Memory Agent를 다시 호출하지 마세요.\n"
+                else:
+                    memory_context = "\n\n### 📚 관련 경험\n관련된 과거 기억이 없습니다.\n"
+                self.logger.debug(f"메모리 검색 완료: {len(search_results)}개 발견")
             except Exception as e:
-                self.logger.warning(f"메모리 조회 실패: {e}")
+                self.logger.warning(f"메모리 검색 실패: {e}")
+                memory_context = ""
+        else:
+            self.logger.debug(f"메모리 검색 건너뜀 (단순 대화)")
 
-        # PlannerAgent에게 모든 판단을 위임 (키워드 파싱 없음)
-        description = f"""
-        사용자 요청: {user_input}
-        {memory_context}
+        # 3단계: Task 생성
+        if intent == "simple_conversation":
+            # 단순 대화: 메모리 검색 없이 바로 응답
+            description = f"""
+            사용자 요청: {user_input}
 
-        위 요청을 분석하고 적절한 전문 에이전트를 선택하여 작업을 수행하세요.
+            위 요청은 단순 인사나 일상 대화입니다.
+            자연스럽고 친근하게 응답하세요. 다른 에이전트에게 작업을 위임하지 마세요.
 
-        **중요**: 최종 답변은 JSON이나 기술적 형식이 아닌, 자연스러운 한국어 문장으로 작성하세요.
-        """.strip()
+            **중요**: 최종 답변은 JSON이나 기술적 형식이 아닌, 자연스러운 한국어 문장으로 작성하세요.
+            """.strip()
+        else:
+            # 작업 요청: 메모리 컨텍스트와 함께 작업 수행
+            description = f"""
+            사용자 요청: {user_input}
+            {memory_context}
+
+            위 요청을 분석하고 적절한 전문 에이전트를 선택하여 작업을 수행하세요.
+
+            **중요**: 최종 답변은 JSON이나 기술적 형식이 아닌, 자연스러운 한국어 문장으로 작성하세요.
+            """.strip()
 
         return [Task(
             description=description,

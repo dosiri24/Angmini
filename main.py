@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import sys
+import time
 from importlib import import_module
 from types import ModuleType
 from typing import Callable, Mapping, cast
@@ -18,6 +21,30 @@ _INTERFACE_ENTRYPOINTS: Mapping[str, tuple[str, str]] = {
     "cli": ("interface.cli", "run"),
     "discord": ("interface.discord_bot", "run_bot"),
 }
+
+
+def _ensure_singleton(interface: str, logger) -> None:
+    """
+    싱글톤 패턴을 사용하여 중복 실행 방지.
+
+    Note: Discord 봇은 자체적으로 SingletonGuard를 사용하므로
+    여기서는 CLI 인터페이스만 체크합니다.
+    """
+    from ai.core.singleton import SingletonGuard
+
+    # Discord는 discord_bot.py에서 자체적으로 싱글톤 체크
+    if interface == "discord":
+        logger.debug("Discord 인터페이스는 자체 싱글톤 체크 사용")
+        return
+
+    # CLI 인터페이스만 여기서 싱글톤 체크
+    if interface == "cli":
+        singleton = SingletonGuard(pid_file_name=".angmini_cli.pid")
+        if not singleton.acquire():
+            logger.error("CLI 싱글톤 잠금 획득 실패")
+            print("⚠️  이미 실행 중인 Angmini CLI 인스턴스가 있습니다.")
+            print("   기존 인스턴스를 종료하거나, 다른 터미널에서 실행하세요.")
+            raise SystemExit(1)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -96,6 +123,9 @@ def main() -> None:
     setup_logging(config.log_level)
     logger = get_logger(__name__)
     log_file = session_log_path()
+
+    # 싱글톤 패턴으로 중복 실행 방지 (CLI만 여기서 체크, Discord는 자체 체크)
+    _ensure_singleton(config.default_interface, logger)
 
     # Single command mode
     if args.query:

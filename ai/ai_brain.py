@@ -62,20 +62,49 @@ class AIBrain:
         history: Optional[Sequence[PromptMessage]] = None,
         temperature: float = 0.7,
         max_output_tokens: Optional[int] = None,
+        max_retries: int = 3,
     ) -> LLMResponse:
-        """Request a completion from Gemini using an optional conversation history."""
+        """Request a completion from Gemini using an optional conversation history.
+
+        Args:
+            max_retries: Gemini 500 에러 발생 시 재시도 횟수 (기본 3회)
+        """
+        from google.api_core.exceptions import InternalServerError
+        import time
+
         contents = self._build_contents(prompt, history)
-        try:
-            response = self._model.generate_content(
-                contents,
-                generation_config={
-                    "temperature": temperature,
-                    **({"max_output_tokens": max_output_tokens} if max_output_tokens else {}),
-                },
-            )
-        except Exception as exc:  # pragma: no cover - API errors surface at runtime
-            self._logger.error("Gemini API 요청 실패: %s", exc, exc_info=True)
-            raise EngineError(f"Gemini API 요청이 실패했습니다: {exc}") from exc
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                response = self._model.generate_content(
+                    contents,
+                    generation_config={
+                        "temperature": temperature,
+                        **({"max_output_tokens": max_output_tokens} if max_output_tokens else {}),
+                    },
+                )
+                # 성공하면 바로 응답 처리로 진행
+                break
+
+            except InternalServerError as exc:
+                # Gemini 500 에러는 재시도 가능
+                last_error = exc
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    self._logger.warning(
+                        f"Gemini 500 에러 발생 (시도 {attempt + 1}/{max_retries}), {wait_time}초 후 재시도..."
+                    )
+                    time.sleep(wait_time)
+                    continue
+                # 마지막 재시도도 실패하면 에러 발생
+                self._logger.error(f"Gemini API 요청 실패 ({max_retries}회 재시도): {exc}", exc_info=True)
+                raise EngineError(f"Gemini API 요청이 실패했습니다 (500 Internal Server Error): {exc}") from exc
+
+            except Exception as exc:  # pragma: no cover - API errors surface at runtime
+                # 다른 에러는 즉시 발생
+                self._logger.error("Gemini API 요청 실패: %s", exc, exc_info=True)
+                raise EngineError(f"Gemini API 요청이 실패했습니다: {exc}") from exc
 
         response_metadata = self._extract_response_metadata(response)
         response_metadata.update(

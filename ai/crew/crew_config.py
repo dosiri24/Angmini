@@ -171,18 +171,45 @@ class AngminiCrew:
             # 메모리에 저장 (성공한 작업)
             if self.memory_service:
                 try:
-                    from ai.shared.models import ExecutionContext
-                    context = ExecutionContext(goal=user_input)
-                    # scratchpad에 최종 결과 추가
-                    context.append_scratch(f"최종 결과: {result_text[:500]}")
-                    # metadata에도 저장
-                    context.metadata['final_result'] = result_text
-                    context.metadata['execution_time'] = execution_time
-                    
-                    self.memory_service.capture(context, user_request=user_input)
-                    self.logger.debug("메모리 저장 완료")
+                    # 토큰 수 확인 (짧은 대화는 메모리 저장 건너뛰기)
+                    total_tokens = 0
+                    if hasattr(crew, 'usage_metrics'):
+                        total_tokens = getattr(crew.usage_metrics, 'total_tokens', 0)
+
+                    # 100 토큰 미만의 짧은 대화는 메모리 저장 안 함 (인사, 간단한 응답 등)
+                    MIN_CONVERSATION_TOKENS = 100
+                    if total_tokens < MIN_CONVERSATION_TOKENS:
+                        self.logger.debug(
+                            f"메모리 저장 건너뜀 - 짧은 대화 (토큰: {total_tokens} < {MIN_CONVERSATION_TOKENS})"
+                        )
+                    else:
+                        from ai.shared.models import ExecutionContext
+                        context = ExecutionContext(goal=user_input)
+
+                        # scratchpad에 풍부한 정보 추가 (retention policy가 저장 여부 판단에 사용)
+                        context.append_scratch(f"[사용자 요청]\n{user_input}\n")
+                        context.append_scratch(f"\n[실행 결과]\n{result_text[:500]}\n")
+
+                        # 도구 사용 정보 추가 (있다면)
+                        if hasattr(crew, 'usage_metrics'):
+                            context.append_scratch(f"\n[토큰 사용]\n입력: {getattr(crew.usage_metrics, 'prompt_tokens', 0)}, 출력: {getattr(crew.usage_metrics, 'completion_tokens', 0)}")
+
+                        # metadata에 상세 정보 저장
+                        context.metadata['final_result'] = result_text
+                        context.metadata['execution_time'] = execution_time
+                        context.metadata['user_input'] = user_input
+                        context.metadata['task_count'] = len(tasks)
+                        context.metadata['final_message'] = result_text  # retention policy가 체크하는 필드
+                        context.metadata['total_tokens'] = total_tokens
+
+                        capture_result = self.memory_service.capture(context, user_request=user_input)
+
+                        if capture_result.stored:
+                            self.logger.info(f"메모리 저장 완료 - ID: {capture_result.record_id}, 분류: {capture_result.category}")
+                        else:
+                            self.logger.debug(f"메모리 저장 건너뜀 - 이유: {capture_result.reason}")
                 except Exception as e:
-                    self.logger.debug(f"메모리 저장 건너뜀: {e}")
+                    self.logger.warning(f"메모리 저장 실패: {e}")
 
             return str(result)
 

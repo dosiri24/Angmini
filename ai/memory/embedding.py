@@ -72,7 +72,7 @@ class QwenEmbeddingModel:
                 model_source,
                 trust_remote_code=True,
                 attn_implementation=attn_impl,
-                dtype=torch_dtype,
+                torch_dtype=torch_dtype,
             )
         except Exception as exc:
             raise EngineError(f"Qwen 임베딩 모델을 불러오지 못했습니다: {exc}") from exc

@@ -104,6 +104,9 @@ class MemoryRetentionPolicy:
         if has_tool_activity or self._contains_errors(source):
             return False
 
+        # 단순 대화도 저장하도록 조건 완화
+        # 사용자가 정보를 제공한 경우 (예: "이번 학기에 자료구조 들어요")도 저장해야 함
+
         user_tokens = self._tokenize_text(source.user_request)
         novel_tokens = response_tokens.difference(user_tokens)
 
@@ -113,13 +116,17 @@ class MemoryRetentionPolicy:
             else 0.0
         )
 
-        # Treat extremely short answers with almost no new vocabulary as low-information responses.
-        if len(response) <= 25 and len(novel_tokens) <= 2:
+        # 너무 짧고 거의 새로운 정보가 없는 응답만 필터링 (조건 완화)
+        # 예: "네", "알겠습니다", "좋아요" 같은 극단적으로 짧은 응답만 제외
+        if len(response) <= 15 and len(novel_tokens) <= 1:  # 기존: 25자, 2단어 → 15자, 1단어로 완화
             return True
 
-        # When most tokens overlap with the user's request and the response itself is tiny,
-        # we assume the assistant admitted a lack of knowledge rather than conveying new facts.
-        if novelty_ratio < 0.25 and len(response_tokens) <= 6:
+        # 응답이 30자 이상이면 무조건 저장 (단순 대화라도 정보 가치가 있을 수 있음)
+        if len(response) >= 30:
+            return False
+
+        # 극단적으로 짧고 새로운 정보가 거의 없는 경우만 필터링
+        if novelty_ratio < 0.15 and len(response_tokens) <= 4:  # 기존: 0.25, 6단어 → 0.15, 4단어로 완화
             return True
 
         return False
