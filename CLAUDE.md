@@ -114,6 +114,8 @@ MCP tools (`mcp/tools/`) inherit `ToolBlueprint`, adapted to CrewAI `BaseTool` v
 **Required**: `GEMINI_API_KEY`, `DEFAULT_INTERFACE` (cli/discord)
 **Optional**: `GEMINI_MODEL` (default: gemini-2.5-pro), `DISCORD_BOT_TOKEN`, `NOTION_API_KEY`, `NOTION_TODO_DATABASE_ID`, `NOTION_PROJECT_DATABASE_ID`, `LOG_LEVEL` (INFO), `CREW_PROCESS_TYPE` (hierarchical/sequential), `CREW_MEMORY_ENABLED`
 
+**Proactive Alert System**: `PROACTIVE_ENABLED` (default: true), `PROACTIVE_WORK_START_HOUR` (9), `PROACTIVE_WORK_END_HOUR` (24), `PROACTIVE_INTERVAL_MEAN` (30), `PROACTIVE_INTERVAL_STD` (15), `PROACTIVE_D2_D3_ALERT` (true), `PROACTIVE_CAPACITY_ALERT` (true)
+
 See `.env.example` for details.
 
 ## Development Guidelines
@@ -220,10 +222,84 @@ See `.env.example` for details.
 - **Roadmap**: `PLAN_for_AI_Agent.md`
 - **Docs**: `docs/` (USAGE.md, CREWAI_MIGRATION_PLAN.md, memory_maintenance.md, APPLE_TOOL_GUIDE.md)
 
+## Proactive Alert System (Phase 5)
+
+**능동 알림 시스템**: 정규분포 기반 타이머로 주기적으로 Notion TODO를 분석하고 Discord 채널에 지능적인 알림을 전송합니다.
+
+### 구조
+- **ai/proactive/**: 능동 알림 시스템 모듈
+  - `scheduler.py`: 메인 스케줄러 (정규분포 타이머, 백그라운드 스레드)
+  - `capacity_analyzer.py`: 작업 용량 분석 (총 소요 시간 vs 남은 시간)
+  - `advance_notifier.py`: D-2, D-3 사전 알림
+  - `state_manager.py`: JSON 상태 관리 (알림 히스토리, 중복 방지)
+  - `message_formatter.py`: Discord 메시지 포맷팅
+- **data/proactive/alert_history.json**: 상태 파일 (알림 히스토리, 마지막 알림 시간)
+
+### 환경변수 설정
+- `PROACTIVE_ENABLED`: 스케줄러 활성화 여부 (default: true)
+- `PROACTIVE_WORK_START_HOUR`: 활동 시작 시간 (default: 9)
+- `PROACTIVE_WORK_END_HOUR`: 활동 종료 시간 (default: 24)
+- `PROACTIVE_INTERVAL_MEAN`: 평균 실행 간격(분) (default: 30)
+- `PROACTIVE_INTERVAL_STD`: 표준편차(분) (default: 15)
+- `PROACTIVE_D2_D3_ALERT`: D-2/D-3 알림 활성화 (default: true)
+- `PROACTIVE_CAPACITY_ALERT`: 작업 용량 분석 알림 활성화 (default: true)
+- `DISCORD_PROACTIVE_CHANNEL_ID`: 알림을 보낼 Discord 채널 ID (필수)
+
+### 동작 방식
+1. **트리거**: 정규분포 기반 타이머 (환경변수로 설정 가능, 기본값: 평균 30분, 표준편차 15분)
+2. **활동 시간**: 환경변수로 설정 가능 (기본값: 09:00 ~ 24:00 KST)
+3. **실행 모드**: `python main.py --interface discord` 실행 시 백그라운드 스레드로 자동 시작
+4. **인터페이스**: Discord 전용 (환경변수 `DISCORD_PROACTIVE_CHANNEL_ID`로 지정한 채널에만 메시지 전송)
+5. **활성화 제어**: `PROACTIVE_ENABLED=false`로 전체 시스템 비활성화 가능
+6. **개별 알림 제어**: 각 알림 유형별 on/off 가능 (`PROACTIVE_D2_D3_ALERT`, `PROACTIVE_CAPACITY_ALERT`)
+
+### 알림 유형
+**유형 A: 작업 용량 분석 알림**
+- 대상: Notion TODO 중 오늘/내일 마감 + 마감 지났지만 미완료 작업
+- 분석: 총 예상 소요 시간 vs 남은 활동 시간
+- 판단: 🟢여유 / 🟡빠듯 / 🔴과부하
+- 권장 일정: 마감일 순으로 자동 생성 (휴식 30분 포함)
+- 발송 조건:
+  - 처리 대상 TODO ≥ 1개
+  - 총 예상 소요 시간 ≥ 1시간
+  - 마지막 용량 분석 알림 후 1시간 경과
+  - 마지막 봇 응답 후 30분 경과
+
+**유형 B: 마감일 사전 알림 (D-2, D-3)**
+- 대상: 마감일이 2~3일 후인 미완료 TODO
+- 발송: 하루 1회 (오전 우선)
+- 발송 조건:
+  - 마감일이 2~3일 후
+  - 작업 상태 미완료
+  - 해당 TODO에 대해 오늘 아직 알림 안 보냄
+
+### 중복 방지 로직
+- 용량 분석 알림: 1시간 간격
+- 사전 알림: 하루 1회 (자정 초기화)
+- 마지막 봇 응답 후 30분 이내는 알림 금지
+
+### 환경변수 (.env)
+```bash
+# Discord 능동 알림 채널 ID (필수)
+DISCORD_PROACTIVE_CHANNEL_ID=your-channel-id-for-proactive-alerts
+
+# Notion 예상 소요 시간 필드 (선택, 없으면 기본값 2시간)
+NOTION_TASK_ESTIMATED_HOURS_PROPERTY=예상소요시간
+```
+
+### 설정 방법
+1. Notion TODO 데이터베이스에 "예상소요시간" 필드 추가 (number 타입)
+2. `.env`에 `DISCORD_PROACTIVE_CHANNEL_ID` 설정 (채널 ID는 Discord에서 복사)
+3. `.env`에 `NOTION_TASK_ESTIMATED_HOURS_PROPERTY` 설정 (선택)
+4. Discord 봇 시작: `python main.py --interface discord`
+
+### 로깅
+- 알림 발송 로그: `logs/YYYYMMDD_HHMMSS.log`
+- 상태 파일: `data/proactive/alert_history.json`
+
 ## Status
 
-✅ Phases 1-4.5 complete (CrewAI multi-agent + tools + memory)
-⏸️ Phase 5 planned (proactive notifications)
+✅ Phases 1-5 complete (CrewAI multi-agent + tools + memory + proactive alerts)
 🚧 Testing coverage incomplete
 
 **Legacy**: `interface/*_backup.py`, `ai/react_engine/` (ReAct engine preserved for reference, not actively used)

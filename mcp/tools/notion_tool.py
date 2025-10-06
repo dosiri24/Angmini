@@ -171,6 +171,7 @@ class NotionTool(ToolBlueprint):
     ENV_TASK_DUE_PROPERTY = "NOTION_TASK_DUE_PROPERTY"
     ENV_TASK_NOTES_PROPERTY = "NOTION_TASK_NOTES_PROPERTY"
     ENV_TASK_RELATION_PROPERTY = "NOTION_TASK_RELATION_PROPERTY"
+    ENV_TASK_ESTIMATED_HOURS_PROPERTY = "NOTION_TASK_ESTIMATED_HOURS_PROPERTY"
 
     ENV_PROJECT_TITLE_PROPERTY = "NOTION_PROJECT_TITLE_PROPERTY"
     ENV_PROJECT_STATUS_PROPERTY = "NOTION_PROJECT_STATUS_PROPERTY"
@@ -183,6 +184,7 @@ class NotionTool(ToolBlueprint):
         "due": "Due",
         "notes": "Notes",
         "relation": None,
+        "estimated_hours": None,
     }
 
     DEFAULT_PROJECT_PROPERTIES = {
@@ -220,8 +222,9 @@ class NotionTool(ToolBlueprint):
                 "due": self.ENV_TASK_DUE_PROPERTY,
                 "notes": self.ENV_TASK_NOTES_PROPERTY,
                 "relation": self.ENV_TASK_RELATION_PROPERTY,
+                "estimated_hours": self.ENV_TASK_ESTIMATED_HOURS_PROPERTY,
             },
-            optional_keys={"relation"},
+            optional_keys={"relation", "estimated_hours"},
         )
         self._project_properties = self._resolve_property_names(
             overrides=project_properties,
@@ -689,6 +692,10 @@ class NotionTool(ToolBlueprint):
         title = self._extract_property_text(properties, target_type="title")
         status = self._extract_property_text(properties, target_type="status")
         date = self._extract_property_date(properties)
+
+        # 예상 소요 시간 추출
+        estimated_hours = self._extract_number_by_name(properties, self._task_properties.get("estimated_hours"))
+
         summary = {
             "id": page.get("id"),
             "url": page.get("url"),
@@ -696,6 +703,9 @@ class NotionTool(ToolBlueprint):
             "status": status,
             "date": date,
         }
+
+        if estimated_hours is not None:
+            summary["estimated_hours"] = estimated_hours
 
         relations = self._extract_relations(properties)
         if relations:
@@ -926,6 +936,30 @@ class NotionTool(ToolBlueprint):
             return None
         items = value.get("rich_text", [])
         return self._first_rich_text(items)
+
+    def _extract_number_by_name(self, properties: Dict[str, Any], property_name: Optional[str]) -> Optional[float]:
+        """
+        속성 이름으로 number 타입 값을 추출합니다.
+
+        Args:
+            properties: Notion 페이지 properties
+            property_name: 추출할 속성 이름
+
+        Returns:
+            number 값 (없으면 None)
+        """
+        if not property_name or property_name not in properties:
+            return None
+
+        value = properties[property_name]
+        if not isinstance(value, dict) or value.get("type") != "number":
+            return None
+
+        number = value.get("number")
+        if isinstance(number, (int, float)):
+            return float(number)
+
+        return None
 
     def _first_rich_text(self, items: Any) -> Optional[str]:
         if not isinstance(items, list) or not items:
