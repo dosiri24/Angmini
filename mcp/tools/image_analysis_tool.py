@@ -8,7 +8,7 @@ MCP Tool for Image Analysis using Gemini Multimodal API.
 """
 from typing import Type, Dict, Any, Optional
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from crewai.tools import BaseTool
 
 from ai.core.logger import get_logger
@@ -43,10 +43,15 @@ class ImageAnalysisCrewAITool(BaseTool):
     """
     args_schema: Type[BaseModel] = ImageAnalysisInput
 
-    def __init__(self):
-        super().__init__()
-        self.logger = get_logger(__name__)
-        self.config = Config.load()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def model_post_init(self, __context):
+        """Pydantic v2 post-initialization hook for logger/config setup"""
+        super().model_post_init(__context)
+
+        # Pydantic 검증 우회하여 속성 할당 (object.__setattr__ 사용)
+        object.__setattr__(self, 'logger', get_logger(__name__))
+        object.__setattr__(self, 'config', Config.load())
 
         # Gemini API 초기화 검증
         if not self.config.gemini_api_key:

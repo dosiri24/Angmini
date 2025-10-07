@@ -45,12 +45,15 @@
 - "과거에 비슷한 작업 있었어?" → Memory Agent
 - "Notion에서 할 일 가져와줘" → Notion Agent
 - "Notes 앱에 메모 추가해줘" → Apple Apps Agent
+- "이 이미지 분석해줘" → Analyzer Agent
+- "PDF 내용 추출해줘" → Analyzer Agent
 
 ### 사용 가능한 전문 에이전트
 - **File Agent**: 파일 시스템 작업
 - **Notion Agent**: Notion 워크스페이스 관리 (경험/프로젝트, todo)
 - **Memory Agent**: 과거 경험 검색
 - **Apple Apps Agent**: macOS 어플리케이션 사용 작업
+- **Analyzer Agent**: 멀티모달 파일 분석 (이미지, 문서, PDF)
 
 ### 계획 수립 원칙
 1. **사용자 요청 정확히 이해**

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -141,6 +141,7 @@ async def _save_attachments(
     attachments: List["discord.Attachment"],
     logger: logging.Logger,
     temp_dir_path: str,
+    max_size_mb: int = 150,
 ) -> List[Dict[str, Any]]:
     """
     Discord 메시지 첨부 파일을 임시 저장소에 저장하고 메타데이터 반환.
@@ -149,6 +150,7 @@ async def _save_attachments(
         attachments: Discord 첨부 파일 리스트
         logger: 로거 인스턴스
         temp_dir_path: 임시 파일 디렉토리 경로 (Fix #14)
+        max_size_mb: 파일당 최대 크기 (MB, 기본값: 150MB)
 
     Returns:
         파일 메타데이터 리스트 (각 항목: {filename, original_filename, filepath, content_type, size})
@@ -159,9 +161,19 @@ async def _save_attachments(
 
     file_metadata = []
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    max_size_bytes = max_size_mb * 1024 * 1024
 
     for idx, attachment in enumerate(attachments):
         try:
+            # 파일 크기 제한 확인 (보안: DoS 방지)
+            if attachment.size > max_size_bytes:
+                size_mb = attachment.size / (1024 * 1024)
+                logger.warning(
+                    f"Skipping attachment {attachment.filename}: "
+                    f"size {size_mb:.1f}MB exceeds limit {max_size_mb}MB"
+                )
+                continue
+
             # 파일 확장자 추출
             original_name = attachment.filename
             file_ext = Path(original_name).suffix
@@ -195,25 +207,31 @@ async def _save_attachments(
 async def _wait_for_follow_up(
     client: "discord.Client",
     initial_message: "discord.Message",
+    processing_ids: set[int],
     wait_seconds: int = 10,
     logger: Optional[logging.Logger] = None,
-) -> List[str]:
+    temp_dir_path: Optional[str] = None,
+) -> Tuple[List[str], List[int], List[Dict[str, Any]]]:
     """
     파일 첨부 후 사용자의 후속 메시지를 대기하고 수집.
 
     Args:
         client: Discord 클라이언트
         initial_message: 초기 메시지 (파일이 첨부된 메시지)
+        processing_ids: 처리 중인 메시지 ID 세트 (중복 처리 방지용)
         wait_seconds: 대기 시간 (초)
         logger: 로거 인스턴스
+        temp_dir_path: 임시 파일 저장 경로 (첨부파일 지원)
 
     Returns:
-        후속 메시지 내용 리스트
+        (후속 메시지 내용 리스트, 후속 메시지 ID 리스트, 후속 첨부파일 메타데이터 리스트) 튜플
     """
     if logger:
         logger.info(f"Waiting {wait_seconds} seconds for follow-up messages...")
 
     follow_up_messages = []
+    follow_up_ids = []
+    follow_up_attachments = []
 
     def check(msg: "discord.Message") -> bool:
         """같은 채널, 같은 사용자의 메시지인지 확인"""
@@ -225,20 +243,36 @@ async def _wait_for_follow_up(
 
     try:
         # wait_seconds 동안 메시지 수집
-        end_time = asyncio.get_event_loop().time() + wait_seconds
+        end_time = asyncio.get_running_loop().time() + wait_seconds
 
-        while asyncio.get_event_loop().time() < end_time:
-            remaining = end_time - asyncio.get_event_loop().time()
+        while asyncio.get_running_loop().time() < end_time:
+            remaining = end_time - asyncio.get_running_loop().time()
             if remaining <= 0:
                 break
 
             try:
                 message = await client.wait_for("message", check=check, timeout=remaining)
+
+                # 즉시 processing_ids에 추가하여 중복 on_message 트리거 방지
+                processing_ids.add(message.id)
+                follow_up_ids.append(message.id)
+
+                # 텍스트 수집
                 content = message.content.strip()
                 if content:
                     follow_up_messages.append(content)
                     if logger:
                         logger.debug(f"Collected follow-up message: {content[:50]}...")
+
+                # 첨부파일 수집 (있는 경우)
+                if message.attachments and temp_dir_path:
+                    if logger:
+                        logger.info(f"Detected {len(message.attachments)} attachment(s) in follow-up message")
+                    saved_metadata = await _save_attachments(
+                        message.attachments, logger, temp_dir_path
+                    )
+                    follow_up_attachments.extend(saved_metadata)
+
             except asyncio.TimeoutError:
                 # 타임아웃은 정상 종료 조건
                 break
@@ -248,9 +282,12 @@ async def _wait_for_follow_up(
             logger.error(f"Error while waiting for follow-up messages: {exc}")
 
     if logger:
-        logger.info(f"Collected {len(follow_up_messages)} follow-up message(s)")
+        logger.info(
+            f"Collected {len(follow_up_messages)} follow-up message(s) "
+            f"and {len(follow_up_attachments)} attachment(s)"
+        )
 
-    return follow_up_messages
+    return follow_up_messages, follow_up_ids, follow_up_attachments
 
 
 def _build_client(
@@ -263,6 +300,13 @@ def _build_client(
     # in run_bot() before creating the client
     client = discord.Client(intents=intents)
     logger = get_logger(__name__)
+
+    # 처리 중인 메시지 ID 추적 (중복 처리 방지)
+    processing_message_ids: set[int] = set()
+
+    # 첨부파일 대기 윈도우: {(channel_id, author_id): expiry_time}
+    # 첨부파일이 있는 메시지 처리 시 후속 메시지 중복 처리 방지
+    attachment_wait_windows: Dict[Tuple[int, int], float] = {}
 
     # 능동 알림 전송용 채널 ID (환경변수에서 읽기)
     proactive_channel_id_str = os.getenv("DISCORD_PROACTIVE_CHANNEL_ID")
@@ -320,6 +364,30 @@ def _build_client(
         if message.author.bot:
             return
 
+        # 이미 처리 중이거나 follow-up으로 수집된 메시지는 무시
+        if message.id in processing_message_ids:
+            logger.debug(f"Skipping message {message.id} (already processed as follow-up)")
+            return
+
+        # 첨부파일 대기 윈도우 확인 (타이밍 레이스 컨디션 방지)
+        current_time = asyncio.get_running_loop().time()
+        wait_key = (message.channel.id, message.author.id)
+
+        # 만료된 윈도우 정리
+        expired_keys = [k for k, expiry in attachment_wait_windows.items() if current_time > expiry]
+        for k in expired_keys:
+            del attachment_wait_windows[k]
+
+        # 대기 윈도우 내에 있으면 스킵 (후속 메시지로 수집될 것)
+        if wait_key in attachment_wait_windows:
+            expiry = attachment_wait_windows[wait_key]
+            if current_time < expiry:
+                logger.debug(
+                    f"Skipping message {message.id} within attachment wait window "
+                    f"(expires in {expiry - current_time:.1f}s)"
+                )
+                return
+
         content = message.content.strip()
         has_attachments = len(message.attachments) > 0
 
@@ -327,27 +395,57 @@ def _build_client(
         if not content and not has_attachments:
             return
 
+        # 현재 메시지를 처리 중 목록에 추가
+        processing_message_ids.add(message.id)
+
         # 파일 첨부가 있는 경우 처리
         file_metadata: List[Dict[str, Any]] = []
         if has_attachments:
             logger.info(f"Detected {len(message.attachments)} attachment(s)")
+
+            # 첨부파일 대기 윈도우 설정 (10초)
+            wait_seconds = 10
+            attachment_wait_windows[wait_key] = current_time + wait_seconds
+            logger.debug(f"Set attachment wait window for {wait_key} (expires in {wait_seconds}s)")
+
+            # 자동 정리 타이머 설정 (봇이 조용해도 메모리 누수 방지)
+            loop = asyncio.get_running_loop()
+            loop.call_later(wait_seconds + 1, lambda: attachment_wait_windows.pop(wait_key, None))
+
+            # 첨부파일 저장과 후속 메시지 수집을 동시에 시작 (메시지 손실 방지)
+            collect_task = asyncio.create_task(_wait_for_follow_up(
+                client=client,
+                initial_message=message,
+                processing_ids=processing_message_ids,
+                wait_seconds=wait_seconds,
+                logger=logger,
+                temp_dir_path=config.temp_attachments_dir,
+            ))
+
             file_metadata = await _save_attachments(
                 message.attachments, logger, config.temp_attachments_dir
             )
 
-            # 10초 대기하여 후속 메시지 수집
-            follow_up_messages = await _wait_for_follow_up(
-                client=client,
-                initial_message=message,
-                wait_seconds=10,
-                logger=logger,
-            )
+            # 후속 메시지 수집 완료 대기
+            follow_up_messages, follow_up_ids, follow_up_file_metadata = await collect_task
+
+            # 대기 윈도우 제거 (수집 완료)
+            if wait_key in attachment_wait_windows:
+                del attachment_wait_windows[wait_key]
+                logger.debug(f"Removed attachment wait window for {wait_key}")
 
             # 후속 메시지를 초기 메시지에 병합
             if follow_up_messages:
                 all_messages = [content] + follow_up_messages if content else follow_up_messages
                 content = "\n".join(all_messages)
                 logger.info(f"Combined {len(all_messages)} message(s) for processing")
+
+            # 후속 첨부파일을 초기 첨부파일에 병합
+            if follow_up_file_metadata:
+                file_metadata.extend(follow_up_file_metadata)
+                logger.info(f"Added {len(follow_up_file_metadata)} follow-up attachment(s)")
+        else:
+            follow_up_ids = []
 
         # CrewAI 실행 준비
         async with message.channel.typing():
@@ -382,6 +480,11 @@ def _build_client(
             _truncate_for_discord(response),
             allowed_mentions=discord.AllowedMentions.none()
         )
+
+        # 메모리 누수 방지: 처리 완료된 메시지 ID 제거
+        processing_message_ids.discard(message.id)
+        for follow_up_id in follow_up_ids:
+            processing_message_ids.discard(follow_up_id)
 
         # 능동 알림 스케줄러에 봇 응답 시간 업데이트
         if scheduler:

@@ -9,7 +9,7 @@ PDF 분석 도구:
 """
 from typing import Type, List
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from crewai.tools import BaseTool
 
 from ai.core.logger import get_logger
@@ -46,9 +46,12 @@ class PDFAnalysisCrewAITool(BaseTool):
     """
     args_schema: Type[BaseModel] = PDFAnalysisInput
 
-    def __init__(self):
-        super().__init__()
-        self.logger = get_logger(__name__)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def model_post_init(self, __context):
+        """Pydantic v2 post-initialization hook for logger setup"""
+        super().model_post_init(__context)
+        object.__setattr__(self, 'logger', get_logger(__name__))
 
     def _run(self, filepath: str, extract_tables: bool = True) -> str:
         """

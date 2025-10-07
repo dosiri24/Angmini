@@ -101,7 +101,7 @@ class TaskFactory:
             response = self.planner.ai_brain.generate_text(
                 classification_prompt,
                 temperature=0.3,
-                max_output_tokens=50
+                max_output_tokens=200  # 50→200: 의도 분류 응답 생성 보장
             )
             intent = response.text.strip().lower()
 
@@ -212,11 +212,12 @@ class TaskFactory:
                 search_results = self.memory_service.repository.search(user_input, top_k=3)
                 if search_results:
                     memory_context = "\n\n### 📚 관련 경험 (이미 검색 완료)\n"
-                    for i, result in enumerate(search_results, 1):
-                        memory_context += f"\n{i}. {result.summary}\n"
-                        memory_context += f"   - 목표: {result.goal}\n"
-                        if result.outcome:
-                            memory_context += f"   - 결과: {result.outcome}\n"
+                    # search() returns List[Tuple[MemoryRecord, float]]
+                    for i, (record, score) in enumerate(search_results, 1):
+                        memory_context += f"\n{i}. {record.summary}\n"
+                        memory_context += f"   - 목표: {record.goal}\n"
+                        if record.outcome:
+                            memory_context += f"   - 결과: {record.outcome}\n"
                     memory_context += "\n**중요**: 위 내용은 이미 검색된 결과입니다. Memory Agent를 다시 호출하지 마세요.\n"
                 else:
                     memory_context = "\n\n### 📚 관련 경험\n관련된 과거 기억이 없습니다.\n"
