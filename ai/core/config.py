@@ -54,6 +54,7 @@ class Config:
     agent_allow_delegation: bool
     crew_memory_enabled: bool
     crew_process_type: str
+    temp_attachments_dir: str
     env_path: Optional[str] = field(default=None, repr=False)
 
     @classmethod
@@ -145,6 +146,9 @@ class Config:
             logger.warning(f"Invalid CREW_PROCESS_TYPE '{crew_process_type}', defaulting to 'hierarchical'")
             crew_process_type = "hierarchical"
 
+        # 임시 첨부 파일 디렉토리 설정 (Fix #14)
+        temp_attachments_dir = os.getenv("TEMP_ATTACHMENTS_DIR", "data/temp/attachments")
+
         logger.debug(
             "Environment variables resolved",
             extra={
@@ -170,6 +174,7 @@ class Config:
             agent_allow_delegation=agent_allow_delegation,
             crew_memory_enabled=crew_memory_enabled,
             crew_process_type=crew_process_type,
+            temp_attachments_dir=temp_attachments_dir,
             env_path=env_path_str,
         )
 
@@ -187,4 +192,5 @@ class Config:
             "agent_allow_delegation": str(self.agent_allow_delegation),
             "crew_memory_enabled": str(self.crew_memory_enabled),
             "crew_process_type": self.crew_process_type,
+            "temp_attachments_dir": self.temp_attachments_dir,
         }

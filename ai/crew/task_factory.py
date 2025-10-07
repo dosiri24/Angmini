@@ -2,7 +2,8 @@
 crew/task_factory.py
 사용자 입력을 CrewAI Task로 변환
 """
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
+from pathlib import Path
 from crewai import Task
 from ai.agents.planner_agent import PlannerAgent
 from ai.agents.base_agent import BaseAngminiAgent
@@ -23,6 +24,60 @@ class TaskFactory:
         self.worker_agents = {agent.role(): agent for agent in worker_agents}
         self.memory_service = memory_service
         self.logger = get_logger(__name__)
+
+    def _format_file_metadata_to_text(self, file_metadata: List[Dict[str, Any]]) -> str:
+        """
+        파일 메타데이터를 자연어 설명으로 변환.
+
+        Args:
+            file_metadata: 파일 메타데이터 리스트
+
+        Returns:
+            자연어 형태의 파일 정보 텍스트
+        """
+        if not file_metadata:
+            return ""
+
+        file_descriptions = []
+        for idx, metadata in enumerate(file_metadata, 1):
+            filename = metadata.get("filename", "unknown")
+            original_name = metadata.get("original_filename", filename)
+            filepath = metadata.get("filepath", "")
+            content_type = metadata.get("content_type", "unknown")
+            size_bytes = metadata.get("size", 0)
+
+            # 파일 크기를 읽기 쉬운 형태로 변환
+            if size_bytes < 1024:
+                size_str = f"{size_bytes} bytes"
+            elif size_bytes < 1024 * 1024:
+                size_str = f"{size_bytes / 1024:.1f} KB"
+            else:
+                size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+
+            # 파일 타입 추론
+            file_ext = Path(original_name).suffix.lower()
+            if file_ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"]:
+                file_type = "이미지"
+            elif file_ext in [".pdf"]:
+                file_type = "PDF 문서"
+            elif file_ext in [".doc", ".docx"]:
+                file_type = "Word 문서"
+            elif file_ext in [".txt", ".md"]:
+                file_type = "텍스트 문서"
+            else:
+                file_type = "파일"
+
+            file_desc = (
+                f"{idx}. {file_type}: {original_name} "
+                f"(크기: {size_str}, 저장 위치: {filepath})"
+            )
+            file_descriptions.append(file_desc)
+
+        header = f"\n\n### 📎 첨부된 파일 ({len(file_metadata)}개)\n"
+        files_text = "\n".join(file_descriptions)
+        footer = "\n\n**중요**: 위 파일들을 AnalyzerAgent에게 위임하여 분석하세요.\n"
+
+        return header + files_text + footer
 
     def _classify_intent(self, user_input: str) -> str:
         """LLM으로 사용자 의도 분류 (메모리 검색 전 실행)"""
@@ -60,18 +115,96 @@ class TaskFactory:
             self.logger.warning(f"의도 분류 실패: {e}, 기본값(task_request) 사용")
             return "task_request"
 
-    def create_tasks_from_input(self, user_input: str) -> List[Task]:
+    def _validate_file_metadata(self, file_metadata: Any) -> bool:
+        """
+        파일 메타데이터의 스키마 검증 (Fix #10).
+
+        Args:
+            file_metadata: 검증할 파일 메타데이터
+
+        Returns:
+            검증 성공 여부
+        """
+        # 타입 검증: 리스트여야 함
+        if not isinstance(file_metadata, list):
+            self.logger.warning(f"Invalid file_metadata type: expected list, got {type(file_metadata)}")
+            return False
+
+        # 각 항목 검증
+        required_keys = {"filename", "filepath"}
+        optional_keys = {"original_filename", "content_type", "size"}
+
+        for idx, item in enumerate(file_metadata):
+            # 각 항목이 딕셔너리여야 함
+            if not isinstance(item, dict):
+                self.logger.warning(f"Invalid file_metadata[{idx}] type: expected dict, got {type(item)}")
+                return False
+
+            # 필수 키 확인
+            missing_keys = required_keys - set(item.keys())
+            if missing_keys:
+                self.logger.warning(f"Missing required keys in file_metadata[{idx}]: {missing_keys}")
+                return False
+
+            # 값 타입 확인
+            if not isinstance(item.get("filename"), str):
+                self.logger.warning(f"Invalid filename type in file_metadata[{idx}]")
+                return False
+
+            if not isinstance(item.get("filepath"), str):
+                self.logger.warning(f"Invalid filepath type in file_metadata[{idx}]")
+                return False
+
+        return True
+
+    def create_tasks_from_input(
+        self, user_input: Union[str, Dict[str, Any]]
+    ) -> List[Task]:
         """사용자 입력으로부터 Task 리스트 생성 - 100% LLM 기반
 
-        1단계: 의도 분류 (simple_conversation vs task_request)
-        2단계: task_request인 경우에만 메모리 검색
-        3단계: Task 생성
+        Args:
+            user_input: 문자열 또는 딕셔너리 (파일 메타데이터 포함)
+                - str: 일반 텍스트 입력
+                - dict: {"user_input": str, "file_metadata": List[Dict]}
+
+        Returns:
+            Task 리스트
+
+        프로세스:
+            1단계: 입력 타입 확인 및 파일 메타데이터 처리
+            2단계: 의도 분류 (simple_conversation vs task_request)
+            3단계: task_request인 경우에만 메모리 검색
+            4단계: Task 생성
         """
 
-        # 1단계: 의도 분류
+        # 1단계: 입력 타입 확인 및 처리
+        file_context = ""
+        if isinstance(user_input, dict):
+            # 딕셔너리 입력: 파일 메타데이터 포함
+            text_input = user_input.get("user_input", "")
+            file_metadata = user_input.get("file_metadata", [])
+
+            # 파일 메타데이터 스키마 검증 (Fix #10)
+            if file_metadata and not self._validate_file_metadata(file_metadata):
+                self.logger.error("Invalid file_metadata schema, ignoring file metadata")
+                file_metadata = []
+
+            if file_metadata:
+                file_context = self._format_file_metadata_to_text(file_metadata)
+                self.logger.info(f"Multimodal input detected: {len(file_metadata)} file(s)")
+            else:
+                self.logger.warning("Dict input received but no file_metadata found")
+
+            # 이후 처리를 위해 텍스트 입력만 사용
+            user_input = text_input
+        else:
+            # 문자열 입력: 일반 텍스트
+            self.logger.debug("Text-only input received")
+
+        # 2단계: 의도 분류
         intent = self._classify_intent(user_input)
 
-        # 2단계: 의도에 따라 메모리 검색 여부 결정
+        # 3단계: 의도에 따라 메모리 검색 여부 결정
         memory_context = ""
         if intent == "task_request" and self.memory_service:
             try:
@@ -94,9 +227,9 @@ class TaskFactory:
         else:
             self.logger.debug(f"메모리 검색 건너뜀 (단순 대화)")
 
-        # 3단계: Task 생성
-        if intent == "simple_conversation":
-            # 단순 대화: 메모리 검색 없이 바로 응답
+        # 4단계: Task 생성
+        if intent == "simple_conversation" and not file_context:
+            # 단순 대화 (파일 없음): 메모리 검색 없이 바로 응답
             description = f"""
             사용자 요청: {user_input}
 
@@ -106,9 +239,10 @@ class TaskFactory:
             **중요**: 최종 답변은 JSON이나 기술적 형식이 아닌, 자연스러운 한국어 문장으로 작성하세요.
             """.strip()
         else:
-            # 작업 요청: 메모리 컨텍스트와 함께 작업 수행
+            # 작업 요청 또는 파일 첨부: 메모리 컨텍스트 + 파일 컨텍스트와 함께 작업 수행
             description = f"""
             사용자 요청: {user_input}
+            {file_context}
             {memory_context}
 
             위 요청을 분석하고 적절한 전문 에이전트를 선택하여 작업을 수행하세요.

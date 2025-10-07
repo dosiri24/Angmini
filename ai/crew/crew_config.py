@@ -2,7 +2,7 @@
 crew/crew_config.py
 Crew 초기화 및 설정 관리
 """
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
 from crewai import Crew, Process
 from ai.ai_brain import AIBrain
 from ai.memory.service import MemoryService
@@ -132,14 +132,33 @@ class AngminiCrew:
 
         return crew
 
-    def kickoff(self, user_input: str) -> str:
-        """사용자 요청 실행"""
+    def kickoff(self, user_input: Union[str, Dict[str, Any]]) -> str:
+        """사용자 요청 실행
+
+        Args:
+            user_input: 문자열 또는 딕셔너리 (파일 메타데이터 포함)
+                - str: 일반 텍스트 입력
+                - dict: {"user_input": str, "file_metadata": List[Dict]}
+
+        Returns:
+            실행 결과 문자열
+        """
         from .task_factory import TaskFactory
         import time
 
         start_time = time.time()
 
-        # Task 생성
+        # Union 타입 처리: dict인 경우 텍스트 부분만 추출 (메모리 저장용)
+        if isinstance(user_input, dict):
+            user_text = user_input.get("user_input", "")
+            has_files = bool(user_input.get("file_metadata"))
+            self.logger.info(f"Multimodal input: text + {len(user_input.get('file_metadata', []))} file(s)")
+        else:
+            user_text = user_input
+            has_files = False
+            self.logger.debug("Text-only input")
+
+        # Task 생성 (TaskFactory가 Union 타입 처리)
         task_factory = TaskFactory(
             planner=self.planner,
             worker_agents=self.worker_agents,
@@ -184,10 +203,12 @@ class AngminiCrew:
                         )
                     else:
                         from ai.shared.models import ExecutionContext
-                        context = ExecutionContext(goal=user_input)
+                        context = ExecutionContext(goal=user_text)
 
                         # scratchpad에 풍부한 정보 추가 (retention policy가 저장 여부 판단에 사용)
-                        context.append_scratch(f"[사용자 요청]\n{user_input}\n")
+                        context.append_scratch(f"[사용자 요청]\n{user_text}\n")
+                        if has_files:
+                            context.append_scratch("[파일 첨부]\n멀티모달 입력 포함\n")
                         context.append_scratch(f"\n[실행 결과]\n{result_text[:500]}\n")
 
                         # 도구 사용 정보 추가 (있다면)
@@ -197,12 +218,13 @@ class AngminiCrew:
                         # metadata에 상세 정보 저장
                         context.metadata['final_result'] = result_text
                         context.metadata['execution_time'] = execution_time
-                        context.metadata['user_input'] = user_input
+                        context.metadata['user_input'] = user_text
+                        context.metadata['has_files'] = has_files
                         context.metadata['task_count'] = len(tasks)
                         context.metadata['final_message'] = result_text  # retention policy가 체크하는 필드
                         context.metadata['total_tokens'] = total_tokens
 
-                        capture_result = self.memory_service.capture(context, user_request=user_input)
+                        capture_result = self.memory_service.capture(context, user_request=user_text)
 
                         if capture_result.stored:
                             self.logger.info(f"메모리 저장 완료 - ID: {capture_result.record_id}, 분류: {capture_result.category}")

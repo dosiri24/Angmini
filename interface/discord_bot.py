@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Optional
+from typing import Optional, List, Dict, Any, Union
+from pathlib import Path
+from datetime import datetime
 import logging
 
 try:
@@ -24,6 +26,36 @@ from ai.memory.factory import create_memory_service
 from ai.ai_brain import AIBrain
 from ai.crew import AngminiCrew
 from ai.proactive import ProactiveScheduler
+
+
+def _cleanup_temp_files(logger: logging.Logger, temp_dir_path: str) -> None:
+    """
+    세션 시작 시 임시 첨부 파일 디렉토리를 정리합니다.
+
+    Args:
+        logger: 로거 인스턴스
+        temp_dir_path: 임시 파일 디렉토리 경로 (Fix #14)
+    """
+    temp_dir = Path(temp_dir_path)
+
+    if not temp_dir.exists():
+        logger.debug("Temp directory does not exist, skipping cleanup")
+        return
+
+    try:
+        deleted_count = 0
+        for file_path in temp_dir.iterdir():
+            if file_path.is_file():
+                file_path.unlink()
+                deleted_count += 1
+
+        if deleted_count > 0:
+            logger.info(f"Cleaned up {deleted_count} temporary file(s) from previous session")
+        else:
+            logger.debug("No temporary files to clean up")
+
+    except Exception as exc:
+        logger.warning(f"Failed to clean up temporary files: {exc}")
 
 
 def run_bot(config: Config) -> None:
@@ -49,6 +81,9 @@ def run_bot(config: Config) -> None:
     logger = get_logger(__name__)
     logger.info("Starting Discord bot with CrewAI")
     logger.debug("SSL certificate path: %s", certifi.where())
+
+    # 세션 시작 시 임시 파일 정리 (Fix #14)
+    _cleanup_temp_files(logger, config.temp_attachments_dir)
 
     # AI Brain 초기화
     try:
@@ -100,6 +135,122 @@ def run_bot(config: Config) -> None:
     except Exception as exc:  # pragma: no cover - bubble up unexpected failures
         logger.exception("Unexpected error during Discord bot execution")
         raise InterfaceError(f"Discord 봇 실행 중 오류가 발생했습니다: {exc}") from exc
+
+
+async def _save_attachments(
+    attachments: List["discord.Attachment"],
+    logger: logging.Logger,
+    temp_dir_path: str,
+) -> List[Dict[str, Any]]:
+    """
+    Discord 메시지 첨부 파일을 임시 저장소에 저장하고 메타데이터 반환.
+
+    Args:
+        attachments: Discord 첨부 파일 리스트
+        logger: 로거 인스턴스
+        temp_dir_path: 임시 파일 디렉토리 경로 (Fix #14)
+
+    Returns:
+        파일 메타데이터 리스트 (각 항목: {filename, original_filename, filepath, content_type, size})
+    """
+    # 임시 저장 디렉토리 생성
+    temp_dir = Path(temp_dir_path)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    file_metadata = []
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    for idx, attachment in enumerate(attachments):
+        try:
+            # 파일 확장자 추출
+            original_name = attachment.filename
+            file_ext = Path(original_name).suffix
+
+            # 타임스탬프 기반 파일명 생성
+            new_filename = f"{timestamp}_{idx}{file_ext}"
+            file_path = temp_dir / new_filename
+
+            # 파일 다운로드 및 저장
+            await attachment.save(file_path)
+
+            # 메타데이터 수집
+            metadata = {
+                "filename": new_filename,
+                "original_filename": original_name,
+                "filepath": str(file_path),
+                "content_type": attachment.content_type or "unknown",
+                "size": attachment.size,
+            }
+            file_metadata.append(metadata)
+
+            logger.info(f"Saved attachment: {original_name} → {new_filename} ({attachment.size} bytes)")
+
+        except Exception as exc:
+            logger.error(f"Failed to save attachment {attachment.filename}: {exc}")
+            continue
+
+    return file_metadata
+
+
+async def _wait_for_follow_up(
+    client: "discord.Client",
+    initial_message: "discord.Message",
+    wait_seconds: int = 10,
+    logger: Optional[logging.Logger] = None,
+) -> List[str]:
+    """
+    파일 첨부 후 사용자의 후속 메시지를 대기하고 수집.
+
+    Args:
+        client: Discord 클라이언트
+        initial_message: 초기 메시지 (파일이 첨부된 메시지)
+        wait_seconds: 대기 시간 (초)
+        logger: 로거 인스턴스
+
+    Returns:
+        후속 메시지 내용 리스트
+    """
+    if logger:
+        logger.info(f"Waiting {wait_seconds} seconds for follow-up messages...")
+
+    follow_up_messages = []
+
+    def check(msg: "discord.Message") -> bool:
+        """같은 채널, 같은 사용자의 메시지인지 확인"""
+        return (
+            msg.channel.id == initial_message.channel.id
+            and msg.author.id == initial_message.author.id
+            and not msg.author.bot
+        )
+
+    try:
+        # wait_seconds 동안 메시지 수집
+        end_time = asyncio.get_event_loop().time() + wait_seconds
+
+        while asyncio.get_event_loop().time() < end_time:
+            remaining = end_time - asyncio.get_event_loop().time()
+            if remaining <= 0:
+                break
+
+            try:
+                message = await client.wait_for("message", check=check, timeout=remaining)
+                content = message.content.strip()
+                if content:
+                    follow_up_messages.append(content)
+                    if logger:
+                        logger.debug(f"Collected follow-up message: {content[:50]}...")
+            except asyncio.TimeoutError:
+                # 타임아웃은 정상 종료 조건
+                break
+
+    except Exception as exc:
+        if logger:
+            logger.error(f"Error while waiting for follow-up messages: {exc}")
+
+    if logger:
+        logger.info(f"Collected {len(follow_up_messages)} follow-up message(s)")
+
+    return follow_up_messages
 
 
 def _build_client(
@@ -170,13 +321,49 @@ def _build_client(
             return
 
         content = message.content.strip()
-        if not content:
+        has_attachments = len(message.attachments) > 0
+
+        # 텍스트 메시지도 없고 첨부파일도 없으면 무시
+        if not content and not has_attachments:
             return
 
+        # 파일 첨부가 있는 경우 처리
+        file_metadata: List[Dict[str, Any]] = []
+        if has_attachments:
+            logger.info(f"Detected {len(message.attachments)} attachment(s)")
+            file_metadata = await _save_attachments(
+                message.attachments, logger, config.temp_attachments_dir
+            )
+
+            # 10초 대기하여 후속 메시지 수집
+            follow_up_messages = await _wait_for_follow_up(
+                client=client,
+                initial_message=message,
+                wait_seconds=10,
+                logger=logger,
+            )
+
+            # 후속 메시지를 초기 메시지에 병합
+            if follow_up_messages:
+                all_messages = [content] + follow_up_messages if content else follow_up_messages
+                content = "\n".join(all_messages)
+                logger.info(f"Combined {len(all_messages)} message(s) for processing")
+
+        # CrewAI 실행 준비
         async with message.channel.typing():
             try:
+                # 파일 메타데이터가 있으면 dict 형태로 전달, 없으면 string 전달
+                if file_metadata:
+                    crew_input: Union[str, Dict[str, Any]] = {
+                        "user_input": content or "첨부된 파일을 분석해주세요.",
+                        "file_metadata": file_metadata,
+                    }
+                    logger.info(f"Passing multimodal input: {len(file_metadata)} file(s)")
+                else:
+                    crew_input = content
+
                 # CrewAI는 동기 실행이므로 asyncio.to_thread 사용
-                result = await asyncio.to_thread(crew.kickoff, content)
+                result = await asyncio.to_thread(crew.kickoff, crew_input)
 
                 # 결과 포맷팅
                 if result:

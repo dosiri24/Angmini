@@ -13,6 +13,7 @@ from .file_agent import FileAgent
 from .notion_agent import NotionAgent
 from .memory_agent import MemoryAgent
 from .apple_apps_agent import AppleAppsAgent
+from .analyzer_agent import AnalyzerAgent
 
 
 class AgentFactory:
@@ -31,7 +32,8 @@ class AgentFactory:
             FileAgent(ai_brain, memory_service, config),
             NotionAgent(ai_brain, memory_service, config),
             MemoryAgent(ai_brain, memory_service, config),
-            AppleAppsAgent(ai_brain, memory_service, config)
+            AppleAppsAgent(ai_brain, memory_service, config),
+            AnalyzerAgent(ai_brain, memory_service, config),
         ]
 
         return agents
@@ -74,4 +76,5 @@ __all__ = [
     'NotionAgent',
     'MemoryAgent',
     'AppleAppsAgent',
+    'AnalyzerAgent',
 ]
