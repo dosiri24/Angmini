@@ -1,77 +1,118 @@
-"""Command-line interface for the Personal AI Assistant."""
+"""Command-line interface for the Personal AI Assistant with CrewAI."""
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 import platform
-
 import logging
+import sys
+import time
 
 from ai.core.config import Config
-from ai.core.exceptions import EngineError
+from ai.core.exceptions import EngineError, InterfaceError
 from ai.core.logger import get_logger
-from ai.react_engine.models import StepCompletedEvent
-from ai.react_engine.runtime import GoalExecutorFactory
-from mcp import create_default_tool_manager
-from .summary import format_execution_summary
+from ai.memory.factory import create_memory_service
+from ai.ai_brain import AIBrain
+from ai.crew import AngminiCrew
 from .streaming import stream_lines, stream_text
 
 _EXIT_COMMANDS: tuple[str, ...] = ("exit", "quit", "종료")
 
 
 def run(config: Config) -> None:
-    """Launch a simple interactive CLI session."""
+    """Launch a simple interactive CLI session with CrewAI integration."""
+    # 불필요한 로그 억제
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # CrewAI 로그 레벨 설정 (DEBUG 모드일 때는 INFO, 아니면 WARNING)
+    if config.log_level == "DEBUG":
+        logging.getLogger("crewai").setLevel(logging.INFO)
+    else:
+        logging.getLogger("crewai").setLevel(logging.WARNING)
+
+    # CrewAI Rich 출력 억제
+    import os
+    os.environ["CREWAI_TELEMETRY"] = "false"
+    os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+
     logger = get_logger(__name__)
-    logger.info("Starting CLI interface (default interface=%s)", config.default_interface)
-    tool_manager = create_default_tool_manager()
-    logger.debug("Registered tools: %s", list(tool_manager.registered_names()))
+    logger.info("Starting CLI interface (CrewAI mode)")
+
+    # AI Brain 초기화
+    try:
+        ai_brain = AIBrain(config)
+        logger.info("AI Brain initialized")
+    except EngineError as exc:
+        logger.error("Failed to initialize AIBrain: %s", exc)
+        print(f"⚠️ AI 엔진을 초기화하지 못했습니다: {exc}")
+        return
+
+    # 메모리 서비스 초기화
+    try:
+        memory_service = create_memory_service()
+        logger.info("Memory service initialized")
+    except Exception as exc:
+        logger.warning("Failed to initialize memory service: %s", exc)
+        memory_service = None
+
+    # CrewAI 초기화
+    try:
+        crew = AngminiCrew(
+            ai_brain=ai_brain,
+            memory_service=memory_service,
+            config=config,
+            verbose=config.log_level == "DEBUG"  # DEBUG 모드에서만 verbose
+        )
+        logger.info("AngminiCrew initialized")
+    except Exception as exc:
+        logger.error("Failed to initialize AngminiCrew: %s", exc)
+        print(f"⚠️ CrewAI를 초기화하지 못했습니다: {exc}")
+        return
 
     # Apple MCP 서버 사전 시작 (macOS에서만)
     if platform.system() == "Darwin":
-        _initialize_apple_mcp_server(logger, tool_manager)
+        _initialize_apple_mcp_server(logger)
 
-    try:
-        executor_factory = GoalExecutorFactory(config, tool_manager)
-    except EngineError as exc:
-        logger.error("Failed to initialise GoalExecutor: %s", exc)
-        print(f"⚠️ 엔진을 초기화하지 못했습니다: {exc}")
-        return
+    print("🤖 Angmini AI Assistant (CrewAI Mode)")
+    print("종료하려면 'exit'를 입력하세요.")
+    print("-" * 50)
 
-    print("Personal AI Assistant CLI입니다. 종료하려면 'exit'를 입력하세요.")
-    _interactive_loop(_EXIT_COMMANDS, logger, executor_factory)
-    print("다음에 또 만나요!")
+    _interactive_loop(_EXIT_COMMANDS, logger, crew, config)
+    print("다음에 또 만나요! 👋")
 
 
-def _initialize_apple_mcp_server(logger: logging.Logger, tool_manager) -> None:
+def _initialize_apple_mcp_server(logger: logging.Logger) -> None:
     """Apple MCP 서버를 사전에 시작합니다."""
     try:
-        # Apple 도구가 등록되어 있는지 확인
-        if "apple" in tool_manager.registered_names():
-            apple_tool = tool_manager.get("apple")
-            logger.info("🍎 Apple MCP 서버 사전 시작 중...")
-            
-            # 서버 시작 시도
-            if apple_tool._ensure_server_running():
-                logger.info("✅ Apple MCP 서버가 성공적으로 시작되었습니다")
-                print("🍎 Apple MCP 서버가 준비되었습니다!")
-            else:
-                logger.warning("⚠️ Apple MCP 서버 시작에 실패했습니다")
-                print("⚠️ Apple MCP 서버를 시작할 수 없습니다. 메모 기능이 제한될 수 있습니다.")
-                print("   설치 가이드: https://github.com/supermemoryai/apple-mcp")
+        from mcp.apple_mcp_manager import AppleMCPManager
+
+        manager = AppleMCPManager()
+        if manager.start_server():
+            logger.info("Apple MCP server ready")
+            print("🍎 Apple MCP 서버가 준비되었습니다!")
+        else:
+            logger.warning("Apple MCP server failed to start")
+            print("⚠️ Apple MCP 서버를 시작할 수 없습니다.")
+    except ImportError:
+        logger.debug("Apple MCP not available")
     except Exception as exc:
         logger.error("Apple MCP 서버 초기화 중 오류: %s", exc)
-        print("⚠️ Apple MCP 초기화 중 오류가 발생했습니다. 메모 기능이 제한될 수 있습니다.")
 
 
 def _interactive_loop(
     exit_commands: Iterable[str],
     logger: logging.Logger,
-    executor_factory: GoalExecutorFactory,
+    crew: AngminiCrew,
+    config: Config,
 ) -> None:
+    """대화형 루프 실행"""
     normalized = {cmd.lower() for cmd in exit_commands}
+
     while True:
         try:
-            user_input = input("assistant> ").strip()
+            user_input = input("\n👤 You: ").strip()
         except EOFError:
             print()
             break
@@ -85,52 +126,162 @@ def _interactive_loop(
         if user_input.lower() in normalized:
             break
 
+        # 사용자 입력 로그 기록
+        logger.info(f"사용자 입력: {user_input}")
+
         try:
-            executor = executor_factory.create()
-            context = executor.run(user_input)
+            # 스트리밍 효과로 "생각 중" 표시
+            print("🤖 Angmini: ", end="", flush=True)
+
+            # CrewAI verbose 모드가 아닐 때만 생각 중 표시
+            if config.log_level != "DEBUG":
+                thinking_msg = "생각 중..."
+                for char in thinking_msg:
+                    print(char, end="", flush=True)
+                    time.sleep(0.05)
+                print("\r🤖 Angmini: ", end="", flush=True)
+
+            # Crew 실행
+            result = crew.kickoff(user_input)
+
+            # CrewAI verbose 모드가 아닐 때만 결과 출력
+            if config.log_level != "DEBUG":
+                # 스트리밍 효과로 결과 출력
+                if config.stream_delay > 0:
+                    for char in result:
+                        print(char, end="", flush=True)
+                        time.sleep(config.stream_delay)
+                    print()  # 마지막 줄바꿈
+                else:
+                    print(result)
+            else:
+                # DEBUG 모드에서는 이미 CrewAI가 출력했으므로 최종 결과만 표시
+                print(f"\n📝 최종 결과: {result}")
+
         except EngineError as exc:
             logger.error("Goal execution failed: %s", exc)
-            print(f"⚠️ 작업을 완료하지 못했어요: {exc}")
+            print(f"\n⚠️ 작업을 완료하지 못했어요: {exc}")
             continue
-        except Exception as exc:  # pragma: no cover - defensive guard
+        except Exception as exc:
             logger.exception("Unexpected error while processing CLI command")
-            print("⚠️ 알 수 없는 오류가 발생했습니다. 로그를 확인해 주세요.")
+            print(f"\n⚠️ 오류가 발생했습니다: {exc}")
+            print("자세한 내용은 로그를 확인해 주세요.")
             continue
 
-        root_level = logging.getLogger().getEffectiveLevel()
-        printed_summary = root_level <= logging.WARNING
-        if printed_summary:
-            print(format_execution_summary(context))
 
-        if context.scratchpad:
-            if printed_summary:
+def _display_execution_summary(context, config: Config) -> None:
+    """실행 요약 표시 (필요시 사용)"""
+    try:
+        from .summary import format_execution_summary
+
+        summary = format_execution_summary(context)
+        if summary:
+            print("\n" + "=" * 50)
+            print("📊 실행 요약")
+            print("=" * 50)
+            for line in summary.split("\n"):
+                print(line)
+            print("=" * 50)
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.warning(f"실행 요약 표시 실패: {e}")
+
+
+def run_single_command(config: Config, query: str) -> None:
+    """Execute a single command and exit (non-interactive mode)."""
+    # 불필요한 로그 억제
+    logging.getLogger("LiteLLM").setLevel(logging.WARNING)
+    logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    # CrewAI 로그 레벨 설정
+    if config.log_level == "DEBUG":
+        logging.getLogger("crewai").setLevel(logging.INFO)
+    else:
+        logging.getLogger("crewai").setLevel(logging.WARNING)
+
+    # CrewAI Rich 출력 억제
+    import os
+    os.environ["CREWAI_TELEMETRY"] = "false"
+    os.environ["CREWAI_DISABLE_TELEMETRY"] = "true"
+
+    logger = get_logger(__name__)
+    logger.info("Single command mode: %s", query)
+
+    # AI Brain 초기화
+    try:
+        ai_brain = AIBrain(config)
+        logger.info("AI Brain initialized")
+    except EngineError as exc:
+        logger.error("Failed to initialize AIBrain: %s", exc)
+        print(f"⚠️ AI 엔진을 초기화하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    # 메모리 서비스 초기화
+    try:
+        memory_service = create_memory_service()
+        logger.info("Memory service initialized")
+    except Exception as exc:
+        logger.warning("Failed to initialize memory service: %s", exc)
+        memory_service = None
+
+    # CrewAI 초기화
+    try:
+        crew = AngminiCrew(
+            ai_brain=ai_brain,
+            memory_service=memory_service,
+            config=config,
+            verbose=config.log_level == "DEBUG"
+        )
+        logger.info("AngminiCrew initialized")
+    except Exception as exc:
+        logger.error("Failed to initialize AngminiCrew: %s", exc)
+        print(f"⚠️ CrewAI를 초기화하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    # Apple MCP 서버 사전 시작 (macOS에서만)
+    if platform.system() == "Darwin":
+        _initialize_apple_mcp_server(logger)
+
+    # 명령 실행
+    try:
+        # DEBUG 모드가 아닐 때만 진행 메시지 표시
+        if config.log_level != "DEBUG":
+            print("🤖 처리 중...", end="", flush=True)
+
+        result = crew.kickoff(query)
+
+        # 결과 출력
+        if config.log_level != "DEBUG":
+            print("\r", end="")  # 진행 메시지 지우기
+            if config.stream_delay > 0:
+                for char in result:
+                    print(char, end="", flush=True)
+                    time.sleep(config.stream_delay)
                 print()
-            print("assistant 생각:")
-            stream_lines(context.scratchpad, prefix="  • ")
+            else:
+                print(result)
+        else:
+            # DEBUG 모드에서는 최종 결과만 표시
+            print(f"\n📝 최종 결과:\n{result}")
 
-        message = _extract_direct_message(context)
-        if message:
-            if context.scratchpad or printed_summary:
-                print()
-            print("assistant 응답: ", end="", flush=True)
-            stream_text(message)
-        elif context.metadata.get("final_message"):
-            # Already streamed via metadata decoration, no extra output needed
-            pass
-        
-        executor_factory.record_turn(user_input, message)
+        logger.info("Command executed successfully")
+
+    except EngineError as exc:
+        logger.error("Command execution failed: %s", exc)
+        print(f"\n⚠️ 작업을 완료하지 못했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        logger.exception("Unexpected error during command execution")
+        print(f"\n⚠️ 오류가 발생했습니다: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
-def _extract_direct_message(context) -> str | None:
-    metadata_message = context.metadata.get("final_message")
-    if isinstance(metadata_message, str) and metadata_message.strip():
-        return metadata_message.strip()
-
-    for event in reversed(context.events):
-        if isinstance(event, StepCompletedEvent):
-            data = getattr(event, "data", None)
-            if isinstance(data, dict) and data.get("type") == "direct_response":
-                message = data.get("message")
-                if isinstance(message, str) and message.strip():
-                    return message.strip()
-    return None
+if __name__ == "__main__":
+    # 직접 실행 시
+    try:
+        config = Config.load()
+        run(config)
+    except Exception as e:
+        print(f"오류: {e}")
+        sys.exit(1)

@@ -43,11 +43,18 @@ def _mask(value: Optional[str]) -> str:
 class Config:
     """Immutable runtime configuration derived from environment variables."""
 
+    ai_assistant_name: str
     default_interface: str
     discord_bot_token: Optional[str]
     gemini_api_key: Optional[str]
     gemini_model: str
     log_level: str
+    stream_delay: float
+    agent_max_iter: int
+    agent_allow_delegation: bool
+    crew_memory_enabled: bool
+    crew_process_type: str
+    temp_attachments_dir: str
     env_path: Optional[str] = field(default=None, repr=False)
 
     @classmethod
@@ -90,6 +97,7 @@ class Config:
             for key, value in override_env.items():
                 os.environ[key] = value
 
+        ai_assistant_name = os.getenv("AI_ASSISTANT_NAME", "Angmini")
         raw_interface = os.getenv("DEFAULT_INTERFACE", "cli")
         if raw_interface is None:
             raise ConfigError("DEFAULT_INTERFACE environment variable is missing.")
@@ -113,29 +121,76 @@ class Config:
 
         raw_key = os.getenv("GEMINI_API_KEY")
         gemini_model = _normalise_gemini_model(os.getenv("GEMINI_MODEL"))
+
+        # 스트리밍 설정
+        try:
+            stream_delay = float(os.getenv("STREAM_DELAY", "0.05"))
+        except ValueError:
+            stream_delay = 0.05
+
+        # CrewAI 에이전트 설정
+        try:
+            agent_max_iter = int(os.getenv("AGENT_MAX_ITER", "5"))
+        except ValueError:
+            agent_max_iter = 5
+
+        agent_allow_delegation_str = os.getenv("AGENT_ALLOW_DELEGATION", "false").lower()
+        agent_allow_delegation = agent_allow_delegation_str in ("true", "1", "yes")
+
+        # CrewAI Crew 설정
+        crew_memory_enabled_str = os.getenv("CREW_MEMORY_ENABLED", "false").lower()
+        crew_memory_enabled = crew_memory_enabled_str in ("true", "1", "yes")
+
+        crew_process_type = os.getenv("CREW_PROCESS_TYPE", "hierarchical").lower()
+        if crew_process_type not in ("hierarchical", "sequential"):
+            logger.warning(f"Invalid CREW_PROCESS_TYPE '{crew_process_type}', defaulting to 'hierarchical'")
+            crew_process_type = "hierarchical"
+
+        # 임시 첨부 파일 디렉토리 설정 (Fix #14)
+        temp_attachments_dir = os.getenv("TEMP_ATTACHMENTS_DIR", "data/temp/attachments")
+
         logger.debug(
             "Environment variables resolved",
             extra={
                 "gemini_api_key": _mask(raw_key),
                 "gemini_model": gemini_model,
+                "stream_delay": stream_delay,
+                "agent_max_iter": agent_max_iter,
+                "agent_allow_delegation": agent_allow_delegation,
+                "crew_memory_enabled": crew_memory_enabled,
+                "crew_process_type": crew_process_type,
             },
         )
 
         return cls(
+            ai_assistant_name=ai_assistant_name,
             default_interface=interface_value,
             discord_bot_token=_coerce_optional(os.getenv("DISCORD_BOT_TOKEN")),
             gemini_api_key=_coerce_optional(raw_key),
             gemini_model=gemini_model,
             log_level=log_level,
+            stream_delay=stream_delay,
+            agent_max_iter=agent_max_iter,
+            agent_allow_delegation=agent_allow_delegation,
+            crew_memory_enabled=crew_memory_enabled,
+            crew_process_type=crew_process_type,
+            temp_attachments_dir=temp_attachments_dir,
             env_path=env_path_str,
         )
 
     def as_dict(self) -> Mapping[str, Optional[str]]:
         """Expose configuration values for debugging or serialization."""
         return {
+            "ai_assistant_name": self.ai_assistant_name,
             "default_interface": self.default_interface,
             "discord_bot_token": self.discord_bot_token,
             "gemini_api_key": self.gemini_api_key,
             "gemini_model": self.gemini_model,
             "log_level": self.log_level,
+            "stream_delay": str(self.stream_delay),
+            "agent_max_iter": str(self.agent_max_iter),
+            "agent_allow_delegation": str(self.agent_allow_delegation),
+            "crew_memory_enabled": str(self.crew_memory_enabled),
+            "crew_process_type": self.crew_process_type,
+            "temp_attachments_dir": self.temp_attachments_dir,
         }

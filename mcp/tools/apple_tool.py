@@ -6,8 +6,11 @@ import platform
 import re
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 from dataclasses import dataclass
+
+from crewai.tools import BaseTool
+from pydantic import BaseModel, Field, ConfigDict
 
 from ai.core.exceptions import ToolError
 from ai.core.logger import get_logger
@@ -1184,3 +1187,232 @@ class AppleTool(ToolBlueprint):
                 self._logger.debug("Apple MCP server stopped during cleanup")
         except Exception as exc:
             self._logger.warning(f"Error during Apple MCP cleanup: {exc}")
+
+
+# ====================================================================
+# CrewAI Adapter
+# ====================================================================
+
+
+class AppleToolInput(BaseModel):
+    """AppleTool 입력 스키마"""
+    app: str = Field(
+        ...,
+        description="macOS 앱 선택 (필수): contacts, notes, messages, mail, calendar, reminders, maps 중 하나"
+    )
+    operation: str = Field(
+        ...,
+        description=(
+            "앱별 작업 (필수). 각 앱마다 지원하는 작업이 다름:\n"
+            "- notes: list, search, create\n"
+            "- reminders: list, search, open, create, listById\n"
+            "- calendar: search, open, list, create\n"
+            "- mail: unread, search, send, mailboxes, accounts, latest\n"
+            "- messages: send, read, schedule, unread\n"
+            "- contacts: list, search\n"
+            "- maps: search, save, directions, pin, listGuides, addToGuide, createGuide"
+        )
+    )
+    title: Optional[str] = Field(default=None, description="Title for the item")
+    content: Optional[str] = Field(default=None, description="Content/body text")
+    note_id: Optional[str] = Field(default=None, description="Note ID for update/delete")
+    reminder_id: Optional[str] = Field(default=None, description="Reminder ID for complete/delete")
+    list_name: Optional[str] = Field(default=None, description="List/folder name")
+    due_date: Optional[str] = Field(default=None, description="Due date for reminders (ISO 8601 format)")
+    priority: Optional[int] = Field(default=None, description="Priority level (1-9)")
+    location: Optional[str] = Field(default=None, description="Location for events")
+    start_time: Optional[str] = Field(default=None, description="Start time for events")
+    end_time: Optional[str] = Field(default=None, description="End time for events")
+    attendees: Optional[List[str]] = Field(default=None, description="Event attendees")
+
+
+class AppleCrewAITool(BaseTool):
+    """CrewAI adapter for AppleTool"""
+    name: str = "Apple 시스템 도구"
+    description: str = "macOS 시스템 앱(Notes, Reminders, Calendar 등)과 상호작용합니다."
+    args_schema: Type[BaseModel] = AppleToolInput
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
+        try:
+            self._apple_tool = AppleTool()
+            # Apple MCP 서버 시작 시도
+            try:
+                from mcp.apple_mcp_manager import AppleMCPManager
+                self._mcp_manager = AppleMCPManager()
+                self._mcp_manager.start_server()
+                self._enabled = True
+            except:
+                # MCP 서버 시작 실패시에도 도구는 초기화
+                self._enabled = True
+        except Exception as e:
+            self._apple_tool = None
+            self._enabled = False
+            self._logger.warning(f"AppleTool 초기화 실패: {e}")
+
+    def _run(
+        self,
+        app: str,
+        operation: str,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        note_id: Optional[str] = None,
+        reminder_id: Optional[str] = None,
+        list_name: Optional[str] = None,
+        due_date: Optional[str] = None,
+        priority: Optional[int] = None,
+        location: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+        **kwargs: Any
+    ) -> str:
+        """도구 실행"""
+        # 전체 파라미터 상세 로깅
+        import json
+        all_params = {
+            "app": app,
+            "operation": operation,
+            "title": title,
+            "content": content,
+            "note_id": note_id,
+            "reminder_id": reminder_id,
+            "list_name": list_name,
+            "due_date": due_date,
+            "priority": priority,
+            "location": location,
+            "start_time": start_time,
+            "end_time": end_time,
+            "attendees": attendees,
+            **kwargs
+        }
+        # None 값 제거
+        logged_params = {k: v for k, v in all_params.items() if v is not None}
+        self._logger.info(f"🔧 [AppleTool] 실행 - 파라미터: {json.dumps(logged_params, ensure_ascii=False, default=str)}")
+
+        if not self._enabled:
+            self._logger.warning("❌ [AppleTool] 비활성화")
+            return "❌ Apple 도구가 비활성화됨"
+
+        # AppleTool 파라미터 구성
+        params = {"app": app, "operation": operation}
+        if title:
+            params["title"] = title
+        if content:
+            params["content"] = content
+        if note_id:
+            params["note_id"] = note_id
+        if reminder_id:
+            params["reminder_id"] = reminder_id
+        if list_name:
+            params["list_name"] = list_name
+        if due_date:
+            params["due_date"] = due_date
+        if priority is not None:
+            params["priority"] = priority
+        if location:
+            params["location"] = location
+        if start_time:
+            params["start_time"] = start_time
+        if end_time:
+            params["end_time"] = end_time
+        if attendees:
+            params["attendees"] = attendees
+
+        self._logger.debug(f"[AppleCrewAITool] AppleTool로 전달할 파라미터: {json.dumps(params, ensure_ascii=False, default=str)}")
+
+        try:
+            # AppleTool의 run() 메서드 호출
+            self._logger.debug(f"[AppleCrewAITool] AppleTool.run() 호출 중...")
+            result: ToolResult = self._apple_tool(**params)
+
+            # 결과 검증 및 상세 로깅
+            if result.success:
+                # 성공 시 데이터 검증
+                if not result.data:
+                    warning_msg = "⚠️ 성공했으나 결과 데이터가 비어있음"
+                    self._logger.warning(f"[AppleCrewAITool] {warning_msg}")
+                    return f"✅ 작업 완료 (데이터 없음)"
+
+                # 결과 데이터 상세 로깅 (200자 제한)
+                data_str = json.dumps(result.data, ensure_ascii=False, default=str)
+                data_preview = data_str[:200] + ("..." if len(data_str) > 200 else "")
+                self._logger.info(f"✅ [AppleCrewAITool] 성공 - 결과: {data_preview}")
+
+                # 성공 메시지 포맷팅
+                return self._format_success_response(result.data, app, operation)
+            else:
+                # 실패 시 에러 상세 로깅 (200자 제한)
+                error_str = str(result.error) if result.error else "알 수 없는 에러"
+                error_preview = error_str[:200] + ("..." if len(error_str) > 200 else "")
+                self._logger.error(f"❌ [AppleCrewAITool] 실패 - 에러: {error_preview}")
+                return f"❌ Apple 작업 실패: {error_preview}"
+
+        except ToolError as e:
+            # ToolError는 AppleTool에서 발생한 예상된 에러
+            error_str = str(e)[:200]
+            self._logger.error(f"❌ [AppleCrewAITool] ToolError - {error_str}")
+            return f"❌ Apple 도구 에러: {error_str}"
+        except Exception as e:
+            # 예상치 못한 에러
+            error_str = str(e)[:200]
+            self._logger.exception(f"❌ [AppleCrewAITool] 예상치 못한 에러 - {error_str}")
+            return f"❌ 도구 실행 중 예외 발생: {error_str}"
+
+    def _format_success_response(self, data: Any, app: str, operation: str) -> str:
+        """성공 응답을 사용자 친화적인 형식으로 변환"""
+        import json
+
+        if isinstance(data, dict):
+            if "notes" in data:
+                notes = data["notes"]
+                if not notes:
+                    return "✅ 메모가 없습니다."
+                output = f"✅ 메모 {len(notes)}개:\n"
+                for note in notes:
+                    output += f"  - {note.get('title', '제목 없음')}"
+                    if note.get('folder'):
+                        output += f" (폴더: {note['folder']})"
+                    output += "\n"
+                self._logger.info(f"[AppleCrewAITool] {app} 조회 성공 - {len(notes)}개 메모")
+                return output
+
+            elif "reminders" in data:
+                reminders = data["reminders"]
+                if not reminders:
+                    return "✅ 미리 알림이 없습니다."
+                output = f"✅ 미리 알림 {len(reminders)}개:\n"
+                for rem in reminders:
+                    status = "✓" if rem.get('completed') else "○"
+                    output += f"  {status} {rem.get('title', '제목 없음')}"
+                    if rem.get('due_date'):
+                        output += f" (마감: {rem['due_date']})"
+                    output += "\n"
+                self._logger.info(f"[AppleCrewAITool] {app} 조회 성공 - {len(reminders)}개 미리 알림")
+                return output
+
+            elif "events" in data:
+                events = data["events"]
+                if not events:
+                    return "✅ 일정이 없습니다."
+                output = f"✅ 일정 {len(events)}개:\n"
+                for event in events:
+                    output += f"  - {event.get('title', '제목 없음')}"
+                    if event.get('start_time'):
+                        output += f" ({event['start_time']})"
+                    output += "\n"
+                self._logger.info(f"[AppleCrewAITool] {app} 조회 성공 - {len(events)}개 일정")
+                return output
+
+            elif "id" in data:
+                item_id = data['id']
+                self._logger.info(f"[AppleCrewAITool] {app} {operation} 성공 - ID: {item_id}")
+                return f"✅ {operation} 완료 (ID: {item_id})"
+
+            else:
+                return f"✅ 성공:\n{json.dumps(data, indent=2, ensure_ascii=False)}"
+        else:
+            return f"✅ 성공: {data}"

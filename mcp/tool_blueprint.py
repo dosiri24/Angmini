@@ -31,6 +31,8 @@ class ToolBlueprint(ABC):
     tool_name: ClassVar[str]
     description: ClassVar[str] = ""
     parameters: ClassVar[Mapping[str, Any]] = {}
+    examples: ClassVar[list[Dict[str, Any]]] = []
+    pitfalls: ClassVar[list[str]] = []
 
     def __init__(self) -> None:
         self._logger = get_logger(self.__class__.__name__)
@@ -54,11 +56,60 @@ class ToolBlueprint(ABC):
 
     def schema(self) -> Dict[str, Any]:
         """Expose a schema-like description to help planning components."""
-        return {
+        schema_dict = {
             "name": self.tool_name,
             "description": self.description,
             "parameters": dict(self.parameters),
         }
+
+        # Include examples if available
+        if self.examples:
+            schema_dict["examples"] = self.examples
+
+        # Include pitfalls if available
+        if self.pitfalls:
+            schema_dict["pitfalls"] = self.pitfalls
+
+        return schema_dict
+
+    def validate_parameters(self, **kwargs: Any) -> tuple[bool, Optional[str]]:
+        """Validate parameters before execution with helpful hints.
+
+        Returns:
+            (is_valid, error_message_with_hint)
+        """
+        # Default implementation - can be overridden by subclasses
+        return (True, None)
+
+    def get_usage_guide(self) -> str:
+        """Generate detailed usage guide for on-demand injection.
+
+        Returns:
+            Markdown-formatted guide with examples and pitfalls
+        """
+        lines = [f"# {self.tool_name} Usage Guide\n"]
+
+        if self.description:
+            lines.append(f"{self.description}\n")
+
+        if self.examples:
+            lines.append("## Examples\n")
+            for idx, example in enumerate(self.examples, 1):
+                lines.append(f"### Example {idx}")
+                if "description" in example:
+                    lines.append(f"{example['description']}\n")
+                if "parameters" in example:
+                    lines.append("```json")
+                    import json
+                    lines.append(json.dumps(example["parameters"], indent=2, ensure_ascii=False))
+                    lines.append("```\n")
+
+        if self.pitfalls:
+            lines.append("## Common Pitfalls\n")
+            for pitfall in self.pitfalls:
+                lines.append(f"- ❌ {pitfall}")
+
+        return "\n".join(lines)
 
     def _validate_metadata(self) -> None:
         name = getattr(self, "tool_name", "").strip()

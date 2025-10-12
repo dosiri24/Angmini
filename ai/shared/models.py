@@ -1,0 +1,322 @@
+"""Data structures shared across the ReAct engine components."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from difflib import SequenceMatcher
+from enum import Enum
+from typing import Any, Dict, List, Mapping, Optional
+
+
+class PlanStepStatus(str, Enum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+
+class StepOutcome(str, Enum):
+    SUCCESS = "success"
+    RETRY = "retry"
+    FAILED = "failed"
+
+
+@dataclass(slots=True)
+class PlanStep:
+    """Represents a single action that the agent must execute."""
+
+    id: int
+    description: str
+    tool_name: Optional[str]
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    status: PlanStepStatus = PlanStepStatus.TODO
+
+    def mark_in_progress(self) -> None:
+        self.status = PlanStepStatus.IN_PROGRESS
+
+    def mark_done(self) -> None:
+        self.status = PlanStepStatus.DONE
+
+    def to_prompt_fragment(self) -> str:
+        status_symbol = {
+            PlanStepStatus.TODO: "[ ]",
+            PlanStepStatus.IN_PROGRESS: "[~]",
+            PlanStepStatus.DONE: "[x]",
+        }[self.status]
+        tool_part = f" tool={self.tool_name}" if self.tool_name else ""
+        return f"{status_symbol} #{self.id}{tool_part}: {self.description}"
+
+
+@dataclass(slots=True)
+class StepResult:
+    """Outcome returned by the StepExecutor."""
+
+    step_id: int
+    outcome: StepOutcome
+    data: Optional[Any] = None
+    error_reason: Optional[str] = None
+    attempt: int = 1
+
+    def should_retry(self, max_attempts: int) -> bool:
+        return self.outcome == StepOutcome.RETRY and self.attempt < max_attempts
+
+
+@dataclass(slots=True)
+class FailureLogEntry:
+    """Captures a single failure attempt for later reflection."""
+
+    step_id: int
+    command: Optional[str]
+    error_message: str
+    attempt: int
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+    def to_prompt_fragment(self) -> str:
+        command_part = f" command={self.command}" if self.command else ""
+        return (
+            f"step={self.step_id}, attempt={self.attempt}{command_part}, error={self.error_message}"
+        )
+
+
+@dataclass(slots=True)
+class PlanEvent:
+    """Base class for events that describe plan changes."""
+
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass(slots=True)
+class PlanUpdatedEvent(PlanEvent):
+    plan_steps: List[PlanStep] = field(default_factory=list)
+    reason: Optional[str] = None
+
+
+@dataclass(slots=True)
+class StepCompletedEvent(PlanEvent):
+    step_id: int = 0
+    outcome: StepOutcome = StepOutcome.SUCCESS
+    data: Optional[Any] = None
+    error_reason: Optional[str] = None
+
+
+@dataclass(slots=True)
+class LoopDetectedEvent(PlanEvent):
+    step_id: int = 0
+    attempts: int = 0
+    reason: str = ""
+
+
+@dataclass(slots=True)
+class PlanningDecision:
+    action: str
+    reason: str
+
+
+@dataclass(slots=True)
+class PlanningDecisionEvent(PlanEvent):
+    """Captures why the planner chose to retry, replan, or abort."""
+
+    step_id: int = 0
+    decision: str = ""
+    reason: str = ""
+    attempt: int = 0
+    error_reason: Optional[str] = None
+
+
+@dataclass(slots=True)
+class ExecutionContext:
+    """Holds the mutable state of a single agent session."""
+
+    goal: str
+    plan_steps: List[PlanStep] = field(default_factory=list)
+    current_step_index: Optional[int] = None
+    fail_log: List[FailureLogEntry] = field(default_factory=list)
+    scratchpad: List[str] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    attempt_counts: Dict[int, int] = field(default_factory=dict)
+    step_started_at: Dict[int, datetime] = field(default_factory=dict)
+    events: List[PlanEvent] = field(default_factory=list)
+    step_outcomes: Dict[int, str] = field(default_factory=dict)
+    structured_observations: List[StructuredObservation] = field(default_factory=list)
+    thinking_tokens: int = 0
+    response_tokens: int = 0
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+    def record_event(self, event: PlanEvent) -> None:
+        self.events.append(event)
+
+    def increment_attempt(self, step_id: int) -> int:
+        count = self.attempt_counts.get(step_id, 0) + 1
+        self.attempt_counts[step_id] = count
+        return count
+
+    def reset_attempt(self, step_id: int) -> None:
+        self.attempt_counts.pop(step_id, None)
+        self.step_started_at.pop(step_id, None)
+
+    def get_attempt(self, step_id: int) -> int:
+        return self.attempt_counts.get(step_id, 0)
+
+    def note_step_started(self, step_id: int) -> None:
+        self.step_started_at[step_id] = datetime.utcnow()
+
+    def step_elapsed(self, step_id: int) -> Optional[timedelta]:
+        started = self.step_started_at.get(step_id)
+        if not started:
+            return None
+        return datetime.utcnow() - started
+
+    def current_step(self) -> Optional[PlanStep]:
+        if self.current_step_index is None:
+            return None
+        if self.current_step_index < 0 or self.current_step_index >= len(self.plan_steps):
+            return None
+        return self.plan_steps[self.current_step_index]
+
+    def remaining_steps(self) -> List[PlanStep]:
+        return [step for step in self.plan_steps if step.status != PlanStepStatus.DONE]
+
+    def as_plan_checklist(self) -> str:
+        return "\n".join(step.to_prompt_fragment() for step in self.plan_steps)
+
+    def add_failure(self, failure: FailureLogEntry) -> None:
+        self.fail_log.append(failure)
+
+    def recent_failures(self, step_id: int, limit: int = 5) -> List[FailureLogEntry]:
+        return [entry for entry in self.fail_log if entry.step_id == step_id][-limit:]
+
+    def fail_log_summary(self, limit: int = 5) -> str:
+        entries = self.fail_log[-limit:]
+        if not entries:
+            return "(no failures yet)"
+        return "\n".join(entry.to_prompt_fragment() for entry in entries)
+
+    def append_scratch(self, note: str) -> None:
+        stripped = note.strip()
+        if not stripped:
+            return
+        self.scratchpad.append(stripped)
+
+    def final_scratchpad_digest(self) -> str:
+        """Return a newline-joined summary of all scratch notes."""
+        return "\n".join(self.scratchpad)
+
+    def record_step_outcome(self, step_id: int, summary: str) -> None:
+        """Store a short narrative about the result of a completed step."""
+        if summary:
+            self.step_outcomes[step_id] = summary.strip()
+        else:
+            self.step_outcomes[step_id] = ""
+
+    def plan_results_digest(self) -> str:
+        """Return a short digest describing outcomes of completed steps."""
+        lines: List[str] = []
+        for step in self.plan_steps:
+            if step.status != PlanStepStatus.DONE:
+                continue
+            outcome = self.step_outcomes.get(step.id)
+            if outcome:
+                lines.append(f"#{step.id} {outcome}")
+            else:
+                lines.append(f"#{step.id} {step.description} 완료")
+
+        if not lines:
+            return "(완료된 단계 정보 없음)"
+        return "\n".join(lines)
+
+    def record_token_usage(self, usage: Mapping[str, Any], *, category: str) -> None:
+        if not isinstance(usage, Mapping):
+            return
+
+        usage_metadata = usage.get("usage_metadata")
+        if not isinstance(usage_metadata, Mapping):
+            usage_metadata = {}
+
+        total_tokens = int((usage_metadata.get("total_token_count") or 0) or 0)
+        prompt_tokens = int((usage_metadata.get("prompt_token_count") or 0) or 0)
+        candidate_tokens = int((usage_metadata.get("candidates_token_count") or 0) or 0)
+
+        if total_tokens == 0 and (prompt_tokens or candidate_tokens):
+            total_tokens = prompt_tokens + candidate_tokens
+
+        token_stats = self.metadata.setdefault(
+            "token_usage",
+            {
+                "total_tokens": 0,
+                "prompt_tokens": 0,
+                "response_tokens": 0,
+                "thinking_tokens": 0,
+            },
+        )
+
+        token_stats["total_tokens"] += total_tokens
+        token_stats["prompt_tokens"] += prompt_tokens
+
+        if category == "final":
+            response_tokens = candidate_tokens or max(total_tokens - prompt_tokens, 0)
+            self.response_tokens += response_tokens
+            token_stats["response_tokens"] += response_tokens
+        else:
+            self.thinking_tokens += total_tokens
+            token_stats["thinking_tokens"] += total_tokens
+
+    def add_structured_observation(self, obs: StructuredObservation) -> None:
+        """Store structured observation for later queries."""
+        self.structured_observations.append(obs)
+
+    def get_observation_by_tool(self, tool: str) -> Optional[StructuredObservation]:
+        """Get most recent observation from specific tool."""
+        for obs in reversed(self.structured_observations):
+            if obs.tool_name == tool:
+                return obs
+        return None
+
+    def calculate_progress(self) -> float:
+        """Estimate goal completion (0.0 to 1.0)."""
+        if not self.plan_steps:
+            return 0.0
+
+        completed = sum(1 for step in self.plan_steps if step.status == PlanStepStatus.DONE)
+        total = len(self.plan_steps)
+
+        # Bonus: Check if we've made state changes (not just reads)
+        has_modifications = any(
+            event.data and event.data.get("operation") in ["create", "update", "delete", "create_task", "update_task"]
+            for event in self.events if isinstance(event, StepCompletedEvent)
+        )
+
+        base_progress = completed / total if total > 0 else 0.0
+
+        # If all steps are done but no modifications made, progress is only 50%
+        if base_progress == 1.0 and not has_modifications:
+            return 0.5
+
+        return base_progress
+
+
+@dataclass
+class StructuredObservation:
+    """Parsed observation data for easy LLM access."""
+    step_id: int
+    tool_name: str
+    operation: str
+    items: List[Dict[str, Any]]  # Normalized results
+    metadata: Dict[str, Any]
+
+    def get_ids(self) -> List[str]:
+        """Extract all IDs from items."""
+        return [item.get("id") for item in self.items if "id" in item]
+
+    def find_by_title(self, query: str) -> Optional[Dict[str, Any]]:
+        """Fuzzy match item by title."""
+        best_match = None
+        best_score = 0.0
+
+        for item in self.items:
+            title = item.get("title", "")
+            score = SequenceMatcher(None, query.lower(), title.lower()).ratio()
+            if score > best_score:
+                best_score = score
+                best_match = item
+
+        return best_match if best_score > 0.7 else None

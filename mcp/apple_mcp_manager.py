@@ -98,12 +98,7 @@ class STDIOCommunicator:
                 self._stderr_thread = threading.Thread(target=self._drain_stderr, daemon=True)
                 self._stderr_thread.start()
             
-            self._logger.info(
-                "Apple MCP server started (pid=%s, cmd=%s, cwd=%s)",
-                self._process.pid,
-                " ".join(self._command),
-                self._working_dir,
-            )
+            self._logger.info("Apple MCP server started (pid=%s)", self._process.pid)
 
         except Exception as e:
             self._cleanup()
@@ -157,13 +152,10 @@ class STDIOCommunicator:
             request_line = json.dumps(request) + '\n'
             self._process.stdin.write(request_line)
             self._process.stdin.flush()
-            
-            self._logger.debug(f"Sent request: {method} with ID {request_id}")
-            
+
             # 응답 대기
             try:
                 response = response_queue.get(timeout=timeout)
-                self._logger.debug(f"Received response for ID {request_id}")
                 
                 # JSON-RPC 오류 확인
                 if "error" in response:
@@ -231,7 +223,10 @@ class STDIOCommunicator:
                         break
                     continue
 
-                self._logger.debug(f"[Apple MCP STDERR] {line.strip()}")
+                # Filter out verbose startup messages
+                stripped = line.strip()
+                if self._should_log_stderr(stripped):
+                    self._logger.debug(f"[Apple MCP] {stripped}")
             except Exception as err:
                 self._logger.warning(f"Error reading Apple MCP stderr: {err}")
                 break
@@ -266,6 +261,36 @@ class STDIOCommunicator:
         if self._stderr_thread and self._stderr_thread.is_alive():
             self._stderr_thread.join(timeout=1.0)
         self._stderr_thread = None
+
+    def _should_log_stderr(self, line: str) -> bool:
+        """Determine if stderr line should be logged (filter verbose startup messages)."""
+        if not line:
+            return False
+
+        # Skip verbose module loading messages
+        skip_patterns = [
+            "Attempting to eagerly load modules",
+            "module loaded successfully",
+            "All modules loaded successfully",
+            "Initializing server in",
+            "Setting up MCP server transport",
+            "Initializing transport",
+            "Setting up stdout filter",
+            "Connecting transport to server",
+            "Server connected successfully",
+        ]
+
+        for pattern in skip_patterns:
+            if pattern in line:
+                return False
+
+        # Log important messages (errors, warnings, or first startup message)
+        important_patterns = ["error", "Error", "ERROR", "warn", "Warning", "Starting apple-mcp"]
+        for pattern in important_patterns:
+            if pattern in line:
+                return True
+
+        return False
 
 
 class ProcessManager:
@@ -407,11 +432,9 @@ class AppleMCPInstaller:
             self._apple_mcp_path / "node_modules"
         ]
         
-        # 디버깅을 위한 상세 로그
         for path in required_files:
-            exists = path.exists()
-            self._logger.debug(f"Checking {path}: {'EXISTS' if exists else 'MISSING'}")
-            if not exists:
+            if not path.exists():
+                self._logger.debug(f"Missing required file: {path}")
                 return False
         
         return True
@@ -427,11 +450,11 @@ class AppleMCPInstaller:
         
         # Bun 런타임 확인
         try:
-            result = subprocess.run(["bun", "--version"], 
+            result = subprocess.run(["bun", "--version"],
                                    capture_output=True, text=True, timeout=5.0)
             checks["bun"] = result.returncode == 0
             if checks["bun"]:
-                self._logger.info(f"Bun version: {result.stdout.strip()}")
+                self._logger.debug(f"Bun version: {result.stdout.strip()}")
         except Exception:
             checks["bun"] = False
         

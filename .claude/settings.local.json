@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest --collect-only)",
+      "Read(//Users/taesooa/.local/bin/**)",
+      "Read(//Users/taesooa/**)",
+      "Bash(codex:*)",
+      "Read(//usr/local/lib/node_modules/@openai/codex/bin/**)",
+      "Bash(env)",
+      "Bash(cat:*)",
+      "Bash(claude mcp add codex:*)",
+      "Bash(claude mcp:*)",
+      "WebFetch(domain:github.com)",
+      "mcp__serena__get_current_config",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__list_memories",
+      "mcp__serena__list_dir",
+      "mcp__serena__get_symbols_overview"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from difflib import SequenceMatcher
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type, List
 from zoneinfo import ZoneInfo
 
 try:
@@ -16,7 +16,11 @@ except ImportError:  # pragma: no cover - dependency missing at runtime
     class APIResponseError(Exception):
         """Fallback error when Notion SDK is unavailable."""
 
+from crewai.tools import BaseTool
+from pydantic import BaseModel, Field, ConfigDict
+
 from ai.core.exceptions import ToolError
+from ai.core.logger import get_logger
 
 from ..tool_blueprint import ToolBlueprint, ToolResult
 
@@ -111,6 +115,51 @@ class NotionTool(ToolBlueprint):
         },
     }
 
+    examples = [
+        {
+            "description": "List tasks with empty project relations",
+            "parameters": {
+                "operation": "list_tasks",
+                "filter": {
+                    "property": "경험/프로젝트",
+                    "relation": {"is_empty": True}
+                }
+            }
+        },
+        {
+            "description": "List all available projects",
+            "parameters": {
+                "operation": "list_projects"
+            }
+        },
+        {
+            "description": "Update task with project relation",
+            "parameters": {
+                "operation": "update_task",
+                "page_id": "abc123de-f456-7890-abcd-ef1234567890",
+                "relations": ["22eddd5c-74a0-8077-940d-f80c70d1648d"]
+            }
+        },
+        {
+            "description": "Create new task with due date",
+            "parameters": {
+                "operation": "create_task",
+                "title": "Complete project report",
+                "due_date": "2025-10-15T23:59:59",
+                "status": "Not started"
+            }
+        }
+    ]
+
+    pitfalls = [
+        "❌ Do NOT use find_project - it's deprecated and fails with 'Name' property error",
+        "❌ Do NOT use placeholder values like '<step 1 result>' - use actual UUIDs from observations",
+        "❌ Do NOT create multi-step plans with forward references - plan one step at a time",
+        "✅ ALWAYS use list_projects instead of find_project, then match by title in your reasoning",
+        "✅ ALWAYS copy exact UUIDs from observation data (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)",
+        "✅ Relations must be an array of UUID strings, not a single string"
+    ]
+
     ENV_PRIMARY_TOKEN = "NOTION_API_KEY"
     ENV_FALLBACK_TOKEN = "NOTION_INTEGRATION_TOKEN"
     ENV_TODO_DATABASE = "NOTION_TODO_DATABASE_ID"
@@ -122,6 +171,7 @@ class NotionTool(ToolBlueprint):
     ENV_TASK_DUE_PROPERTY = "NOTION_TASK_DUE_PROPERTY"
     ENV_TASK_NOTES_PROPERTY = "NOTION_TASK_NOTES_PROPERTY"
     ENV_TASK_RELATION_PROPERTY = "NOTION_TASK_RELATION_PROPERTY"
+    ENV_TASK_ESTIMATED_HOURS_PROPERTY = "NOTION_TASK_ESTIMATED_HOURS_PROPERTY"
 
     ENV_PROJECT_TITLE_PROPERTY = "NOTION_PROJECT_TITLE_PROPERTY"
     ENV_PROJECT_STATUS_PROPERTY = "NOTION_PROJECT_STATUS_PROPERTY"
@@ -134,6 +184,7 @@ class NotionTool(ToolBlueprint):
         "due": "Due",
         "notes": "Notes",
         "relation": None,
+        "estimated_hours": None,
     }
 
     DEFAULT_PROJECT_PROPERTIES = {
@@ -171,8 +222,9 @@ class NotionTool(ToolBlueprint):
                 "due": self.ENV_TASK_DUE_PROPERTY,
                 "notes": self.ENV_TASK_NOTES_PROPERTY,
                 "relation": self.ENV_TASK_RELATION_PROPERTY,
+                "estimated_hours": self.ENV_TASK_ESTIMATED_HOURS_PROPERTY,
             },
-            optional_keys={"relation"},
+            optional_keys={"relation", "estimated_hours"},
         )
         self._project_properties = self._resolve_property_names(
             overrides=project_properties,
@@ -185,6 +237,65 @@ class NotionTool(ToolBlueprint):
             },
             optional_keys={"status", "notes", "relation"},
         )
+
+    def validate_parameters(self, **kwargs: Any) -> tuple[bool, Optional[str]]:
+        """Validate parameters before execution with helpful hints."""
+        import re
+
+        operation = kwargs.get("operation", "").strip().lower()
+
+        # Block deprecated find_project
+        if operation == "find_project":
+            return (
+                False,
+                "❌ Operation 'find_project' is deprecated due to property errors.\n"
+                "💡 Use 'list_projects' instead, then match by title in your reasoning.\n"
+                "Example: list_projects → filter results → use matched project ID"
+            )
+
+        # Validate UUID format for page_id
+        if "page_id" in kwargs:
+            page_id = kwargs["page_id"]
+            if not self._is_valid_uuid(str(page_id)):
+                return (
+                    False,
+                    f"❌ Invalid page_id format: '{page_id}'\n"
+                    f"💡 Must be a valid UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)\n"
+                    f"💡 Copy exact UUID from observation data, do NOT use placeholders"
+                )
+
+        # Validate UUID format for relations
+        if "relations" in kwargs:
+            relations = kwargs["relations"]
+            if not isinstance(relations, list):
+                return (
+                    False,
+                    f"❌ 'relations' must be an array, not {type(relations).__name__}\n"
+                    f"💡 Use: \"relations\": [\"uuid1\", \"uuid2\"]"
+                )
+
+            for idx, rel_id in enumerate(relations):
+                if not self._is_valid_uuid(str(rel_id)):
+                    return (
+                        False,
+                        f"❌ Invalid UUID in relations[{idx}]: '{rel_id}'\n"
+                        f"💡 Must be valid UUIDs (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)\n"
+                        f"💡 Copy exact UUIDs from observation data"
+                    )
+
+        return (True, None)
+
+    @staticmethod
+    def _is_valid_uuid(value: str) -> bool:
+        """Check if string is a valid UUID format."""
+        import re
+        uuid_pattern = re.compile(
+            r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+            re.IGNORECASE
+        )
+        # Also accept compact format (no hyphens)
+        compact_pattern = re.compile(r'^[0-9a-f]{32}$', re.IGNORECASE)
+        return bool(uuid_pattern.match(value) or compact_pattern.match(value))
 
     def run(self, **kwargs: Any) -> ToolResult:
         operation = self._canonical_operation(kwargs.get("operation"))
@@ -339,10 +450,18 @@ class NotionTool(ToolBlueprint):
     def _ensure_kst_timezone(self, raw: str) -> str:
         """Ensure datetime strings with time include KST(+09:00) offset.
 
+        별도 지시가 없는 한 모든 시간은 한국 시간(GMT+9, Asia/Seoul)으로 처리합니다.
+
         - If the input is a date only (YYYY-MM-DD), return as-is.
         - If time part exists and a timezone designator (Z or ±HH:MM) is missing,
           append "+09:00" so Notion does not treat it as UTC.
         - If timezone is already present, return as-is.
+
+        Examples:
+            "2025-10-03" → "2025-10-03" (날짜만 있는 경우 그대로 유지)
+            "2025-10-03T15:00:00" → "2025-10-03T15:00:00+09:00" (시간 있으면 KST 추가)
+            "2025-10-03T15:00:00+09:00" → "2025-10-03T15:00:00+09:00" (이미 타임존 있으면 유지)
+            "2025-10-03T15:00:00Z" → "2025-10-03T15:00:00Z" (UTC 명시된 경우 유지)
         """
         text = (raw or "").strip()
         if not text:
@@ -353,15 +472,19 @@ class NotionTool(ToolBlueprint):
         # Time part exists; check for timezone designator
         time_part = text.split("T", 1)[1]
         if time_part.endswith("Z") or time_part.endswith("z"):
+            # UTC로 명시된 경우 그대로 유지 (Notion이 UTC로 처리)
             return text
         if "+" in time_part:
+            # 이미 양수 offset 있음 (예: +09:00, +00:00)
             return text
         # Detect negative offset like -09:00 in time part
         # The time format is HH:MM(:SS[.fff]) optionally followed by offset
         # A '-' in time_part (beyond the hour/minute section) indicates an offset
         if "-" in time_part[2:]:
+            # 음수 offset 있음 (예: -05:00)
             return text
-        # No timezone info → append KST offset
+        # No timezone info → append KST offset (+09:00)
+        # 이것이 기본 동작: 타임존 정보가 없으면 한국 시간(GMT+9)으로 간주
         return f"{text}+09:00"
 
     def _retrieve_task_context(self, client: Any, page_id: str) -> Dict[str, Optional[str]]:
@@ -569,6 +692,10 @@ class NotionTool(ToolBlueprint):
         title = self._extract_property_text(properties, target_type="title")
         status = self._extract_property_text(properties, target_type="status")
         date = self._extract_property_date(properties)
+
+        # 예상 소요 시간 추출
+        estimated_hours = self._extract_number_by_name(properties, self._task_properties.get("estimated_hours"))
+
         summary = {
             "id": page.get("id"),
             "url": page.get("url"),
@@ -576,6 +703,9 @@ class NotionTool(ToolBlueprint):
             "status": status,
             "date": date,
         }
+
+        if estimated_hours is not None:
+            summary["estimated_hours"] = estimated_hours
 
         relations = self._extract_relations(properties)
         if relations:
@@ -807,6 +937,30 @@ class NotionTool(ToolBlueprint):
         items = value.get("rich_text", [])
         return self._first_rich_text(items)
 
+    def _extract_number_by_name(self, properties: Dict[str, Any], property_name: Optional[str]) -> Optional[float]:
+        """
+        속성 이름으로 number 타입 값을 추출합니다.
+
+        Args:
+            properties: Notion 페이지 properties
+            property_name: 추출할 속성 이름
+
+        Returns:
+            number 값 (없으면 None)
+        """
+        if not property_name or property_name not in properties:
+            return None
+
+        value = properties[property_name]
+        if not isinstance(value, dict) or value.get("type") != "number":
+            return None
+
+        number = value.get("number")
+        if isinstance(number, (int, float)):
+            return float(number)
+
+        return None
+
     def _first_rich_text(self, items: Any) -> Optional[str]:
         if not isinstance(items, list) or not items:
             return None
@@ -964,3 +1118,185 @@ class NotionTool(ToolBlueprint):
         raise ToolError(
             "operation 파라미터는 create_task/list_tasks/update_task/list_projects/find_project 또는 관련 별칭이어야 합니다."
         )
+
+
+# ====================================================================
+# CrewAI Adapter
+# ====================================================================
+
+
+class NotionToolInput(BaseModel):
+    """NotionTool 입력 스키마"""
+    operation: str = Field(..., description="Operation: create_task, list_tasks, update_task, delete_task, search_project")
+    title: Optional[str] = Field(default=None, description="Task title (for create/update)")
+    content: Optional[str] = Field(default=None, description="Task content/description")
+    task_id: Optional[str] = Field(default=None, description="Task ID (for update/delete)")
+    status: Optional[str] = Field(default=None, description="Task status")
+    due_date: Optional[str] = Field(default=None, description="Due date in YYYY-MM-DD format")
+    project_title: Optional[str] = Field(default=None, description="Project title to link")
+    tags: Optional[List[str]] = Field(default=None, description="Tags for the task")
+
+
+class NotionCrewAITool(BaseTool):
+    """CrewAI adapter for NotionTool"""
+    name: str = "Notion 도구"
+    description: str = "Notion API를 통해 할일 생성, 조회, 업데이트, 삭제 및 프로젝트 관리를 수행합니다."
+    args_schema: Type[BaseModel] = NotionToolInput
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._logger = get_logger(__name__)
+        try:
+            self._notion_tool = NotionTool()
+            self._enabled = True
+        except Exception as e:
+            # Notion API 키가 없는 경우 등 초기화 실패 처리
+            self._notion_tool = None
+            self._enabled = False
+            self._logger.warning(f"NotionTool 초기화 실패: {e}")
+
+    def _run(
+        self,
+        operation: str,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        task_id: Optional[str] = None,
+        status: Optional[str] = None,
+        due_date: Optional[str] = None,
+        project_title: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        **kwargs: Any
+    ) -> str:
+        """도구 실행 - NotionTool의 run() 메서드를 호출하여 실제 작업 수행"""
+        # 전체 파라미터 상세 로깅
+        import json
+        all_params = {
+            "operation": operation,
+            "title": title,
+            "content": content,
+            "task_id": task_id,
+            "status": status,
+            "due_date": due_date,
+            "project_title": project_title,
+            "tags": tags,
+            **kwargs
+        }
+        # None 값 제거
+        logged_params = {k: v for k, v in all_params.items() if v is not None}
+        self._logger.info(f"🔧 [NotionCrewAITool] 실행 시작 - 파라미터: {json.dumps(logged_params, ensure_ascii=False, default=str)}")
+
+        if not self._enabled:
+            error_msg = "❌ Notion 도구가 비활성화됨 (API 키 확인 필요)"
+            self._logger.error(f"[NotionCrewAITool] {error_msg}")
+            return error_msg
+
+        # NotionTool의 실제 파라미터로 매핑 (content -> notes, task_id -> page_id)
+        notion_params = {"operation": operation}
+        if title:
+            notion_params["title"] = title
+        if content:
+            notion_params["notes"] = content  # content -> notes 매핑
+        if task_id:
+            notion_params["page_id"] = task_id  # task_id -> page_id 매핑
+        if status:
+            notion_params["status"] = status
+        if due_date:
+            notion_params["due_date"] = due_date
+        # project_title과 tags는 NotionTool에서 직접 지원하지 않음 (무시)
+
+        self._logger.debug(f"[NotionCrewAITool] NotionTool로 전달할 파라미터: {json.dumps(notion_params, ensure_ascii=False, default=str)}")
+
+        try:
+            # NotionTool의 validate_parameters 호출하여 사전 검증
+            is_valid, validation_error = self._notion_tool.validate_parameters(**notion_params)
+            if not is_valid:
+                error_msg = f"❌ 파라미터 검증 실패:\n{validation_error}"
+                self._logger.error(f"[NotionCrewAITool] {error_msg}")
+                return error_msg
+
+            # NotionTool의 run() 메서드 호출
+            self._logger.debug(f"[NotionCrewAITool] NotionTool.run() 호출 중...")
+            result: ToolResult = self._notion_tool.run(**notion_params)
+
+            # 결과 검증 및 상세 로깅
+            if result.success:
+                # 성공 시 데이터 검증
+                if not result.data:
+                    warning_msg = "⚠️ 성공했으나 결과 데이터가 비어있음"
+                    self._logger.warning(f"[NotionCrewAITool] {warning_msg}")
+                    return f"✅ 작업 완료 (데이터 없음)"
+
+                # 결과 데이터 상세 로깅 (200자 제한)
+                data_str = json.dumps(result.data, ensure_ascii=False, default=str)
+                data_preview = data_str[:200] + ("..." if len(data_str) > 200 else "")
+                self._logger.info(f"✅ [NotionCrewAITool] 성공 - 결과: {data_preview}")
+
+                # 성공 메시지 포맷팅
+                return self._format_success_response(result.data, operation)
+            else:
+                # 실패 시 에러 상세 로깅 (200자 제한)
+                error_str = str(result.error) if result.error else "알 수 없는 에러"
+                error_preview = error_str[:200] + ("..." if len(error_str) > 200 else "")
+                self._logger.error(f"❌ [NotionCrewAITool] 실패 - 에러: {error_preview}")
+                return f"❌ Notion 작업 실패: {error_preview}"
+
+        except ToolError as e:
+            # ToolError는 NotionTool에서 발생한 예상된 에러
+            error_str = str(e)[:200]
+            self._logger.error(f"❌ [NotionCrewAITool] ToolError - {error_str}")
+            return f"❌ Notion 도구 에러: {error_str}"
+        except Exception as e:
+            # 예상치 못한 에러
+            error_str = str(e)[:200]
+            self._logger.exception(f"❌ [NotionCrewAITool] 예상치 못한 에러 - {error_str}")
+            return f"❌ 도구 실행 중 예외 발생: {error_str}"
+
+    def _format_success_response(self, data: Any, operation: str) -> str:
+        """성공 응답을 사용자 친화적인 형식으로 변환"""
+        import json
+
+        if isinstance(data, dict):
+            # list_tasks/list_todos 결과
+            if "items" in data:
+                items = data["items"]
+                if not items:
+                    return "✅ 할일이 없습니다."
+                output = f"✅ 할일 {len(items)}개 조회:\n"
+                for item in items:
+                    output += f"  - [{item.get('status', '?')}] {item.get('title', '제목 없음')}"
+                    if item.get('date'):
+                        output += f" (마감: {item['date']})"
+                    output += "\n"
+                return output
+
+            # create_task/update_task 결과
+            elif "id" in data:
+                task_id = data['id']
+                url = data.get('url', '')
+                op_display = {
+                    "create_task": "할일 생성",
+                    "update_task": "할일 업데이트",
+                    "create_todo": "할일 생성",
+                    "update_todo": "할일 업데이트",
+                }.get(operation, "작업")
+
+                result_msg = f"✅ {op_display} 완료\n"
+                result_msg += f"  - ID: {task_id}\n"
+                if url:
+                    result_msg += f"  - URL: {url}\n"
+
+                # relations가 있으면 표시
+                if data.get('relations'):
+                    result_msg += f"  - 연결된 프로젝트: {len(data['relations'])}개\n"
+
+                self._logger.info(f"[NotionCrewAITool] {op_display} 성공 - ID: {task_id}")
+                return result_msg
+
+            # 기타 dict 응답
+            else:
+                return f"✅ 성공:\n{json.dumps(data, indent=2, ensure_ascii=False)}"
+        else:
+            # dict가 아닌 응답
+            return f"✅ 성공: {data}"

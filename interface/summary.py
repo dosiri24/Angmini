@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Iterable, Sequence
 
-from ai.react_engine.models import ExecutionContext, PlanStep, PlanStepStatus, StepCompletedEvent
+from ai.shared.models import ExecutionContext, PlanStep, PlanStepStatus, StepCompletedEvent
 
 
 def format_execution_summary(context: ExecutionContext, *, max_failures: int = 3) -> str:

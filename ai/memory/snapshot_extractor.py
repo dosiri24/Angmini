@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, Optional
 
-from ai.react_engine.models import ExecutionContext, PlanStep, StepCompletedEvent
+from ai.shared.models import ExecutionContext, PlanStep, StepCompletedEvent
 
 from .memory_records import MemorySourceData
 
