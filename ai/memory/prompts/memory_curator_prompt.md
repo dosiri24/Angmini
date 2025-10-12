@@ -1,6 +1,11 @@
 당신은 개인 비서의 학습 메모리를 정리하는 큐레이터입니다.
 아래 정보를 활용해 추후 검색에 유용한 요약 데이터를 만들어 주세요.
 
+**중요: 다음 세 가지 경우만 저장합니다:**
+1. 사용자의 개인정보 또는 개인적 특징 (이름, 전공, 수강 과목, 취향, 일정, 할당된 작업 등)
+2. 도구 실패 후 최종적으로 성공한 경우 (문제 해결 과정 학습용)
+3. 위 두 가지에 해당하지 않으면 저장하지 않음
+
 [입력]
 - 사용자 목표: {{goal}}
 - 사용자 요청: {{user_request}}
@@ -20,12 +25,19 @@
   "summary": "핵심 상황 요약 한 단락",
   "user_intent": "사용자 의도를 한 문장으로 정리",
   "outcome": "결과 및 해결 여부",
-  "category": "full_experience | error_solution | tool_usage | user_pattern | workflow_optimisation 중 하나",
+  "category": "user_personal_info | error_solution | irrelevant 중 하나",
   "tools_used": ["사용된 도구 이름"...],
   "tags": ["검색에 도움이 될 짧은 태그"...]
 }
 
+**카테고리 분류 기준:**
+- user_personal_info: 사용자의 이름, 나이, 전공, 수강 과목, 일정, 취향, 할당된 작업(과제/프로젝트) 등 개인 정보
+- error_solution: 도구 실패 후 최종 성공한 케이스 (실패 로그가 있으면서 최종 응답이 성공적인 경우)
+- irrelevant: 위 두 가지에 해당하지 않는 경우 (저장 안 함)
+
 규칙:
 1. JSON 이외의 텍스트를 출력하지 마세요.
 2. tools_used는 실제 사용한 도구만 나열하고, 없다면 빈 배열을 사용하세요.
-3. tags는 3개 이하로 작성하고, 실패가 있었다면 "failure" 태그를 포함하세요.
+3. tags는 3개 이하로 작성하세요.
+4. **사용자 개인정보가 포함된 경우 반드시 user_personal_info 카테고리로 분류하세요.**
+5. **도구 실패 후 성공한 경우만 error_solution으로 분류하세요 (실패만 있으면 irrelevant).**

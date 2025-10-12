@@ -52,7 +52,7 @@ class MemoryService:
         repository = create_memory_repository()
         pipeline = MemoryPipeline(
             snapshot_extractor=SnapshotExtractor(),
-            retention_policy=MemoryRetentionPolicy(),
+            retention_policy=MemoryRetentionPolicy(brain=brain),
             curator=MemoryCurator(brain),
             deduplicator=MemoryDeduplicator(),
         )
