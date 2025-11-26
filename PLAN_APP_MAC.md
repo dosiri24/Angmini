@@ -50,35 +50,35 @@ app-mac/
 
 ---
 
-## Phase 1: 기본 틀 (뼈대)
+## Phase 1: 기본 틀 (뼈대) ✅ 완료
 
 ### 1.1 Tauri + React 프로젝트 생성
-- [ ] **IMPL**: `create-tauri-app`으로 프로젝트 초기화
-- [ ] **IMPL**: TypeScript 설정 확인
-- [ ] **IMPL**: `npm run tauri dev` 동작 확인
+- [x] **IMPL**: `create-tauri-app`으로 프로젝트 초기화
+- [x] **IMPL**: TypeScript 설정 확인
+- [x] **IMPL**: `npm run tauri dev` 동작 확인
 
 ### 1.2 창 설정
-- [ ] **IMPL**: tauri.conf.json에서 창 크기 설정 (360 x 640)
-- [ ] **IMPL**: 리사이즈 비활성화
+- [x] **IMPL**: tauri.conf.json에서 창 크기 설정 (360 x 780)
+- [x] **IMPL**: 리사이즈 비활성화
 - [ ] **IMPL**: 타이틀바 커스텀 또는 숨김 (선택)
 
 ### 1.3 3단 레이아웃 구현
-- [ ] **IMPL**: Layout 컴포넌트 생성
-- [ ] **IMPL**: 캐릭터 영역 (고정 높이, 16:9 비율)
-- [ ] **IMPL**: 컨텐츠 영역 (가변 높이, 스크롤 가능)
-- [ ] **IMPL**: 토글 영역 (고정 높이)
+- [x] **IMPL**: Layout 컴포넌트 생성
+- [x] **IMPL**: 캐릭터 영역 (고정 높이, 16:9 비율)
+- [x] **IMPL**: 컨텐츠 영역 (가변 높이, 스크롤 가능)
+- [x] **IMPL**: 토글 영역 (고정 높이)
 
 ### 1.4 토글 스위치 구현
-- [ ] **IMPL**: Toggle 컴포넌트 생성
-- [ ] **IMPL**: 채팅 ↔ 달력 상태 관리
-- [ ] **IMPL**: 슬라이드 애니메이션
-- [ ] **IMPL**: 클릭/드래그로 전환
+- [x] **IMPL**: Toggle 컴포넌트 생성
+- [x] **IMPL**: 채팅 ↔ 달력 상태 관리
+- [x] **IMPL**: 슬라이드 애니메이션
+- [x] **IMPL**: 클릭으로 전환
 
 ### 1.5 캐릭터 상태 시스템
-- [ ] **IMPL**: useCharacter 훅 생성
-- [ ] **IMPL**: 상태 종류 정의 (idle, thinking, action, looking_down)
-- [ ] **IMPL**: 상태 텍스트로 표시 (개발용 플레이스홀더)
-- [ ] **IMPL**: 모드 전환 시 상태 변경 (idle ↔ looking_down)
+- [x] **IMPL**: useCharacter 훅 생성
+- [x] **IMPL**: 상태 종류 정의 (idle, thinking, action, looking_down)
+- [x] **IMPL**: 상태 텍스트로 표시 (개발용 플레이스홀더)
+- [x] **IMPL**: 모드 전환 시 상태 변경 (idle ↔ looking_down)
 
 ---
 
@@ -193,7 +193,7 @@ app-mac/
 
 | Phase | 상태 | 시작 | 완료 |
 |-------|------|------|------|
-| 1. 기본 틀 | ⏳ 대기 | - | - |
+| 1. 기본 틀 | ✅ 완료 | 2025-11-26 | 2025-11-26 |
 | 2. 채팅 기능 | ⏳ 대기 | - | - |
 | 3. 달력 기능 | ⏳ 대기 | - | - |
 | 4. 통합/마무리 | ⏳ 대기 | - | - |

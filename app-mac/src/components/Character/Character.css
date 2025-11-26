@@ -1,0 +1,26 @@
+/* 캐릭터 영역: 16:9 비율, 360px 너비 → 높이 약 200px */
+.character-container {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.character-placeholder {
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.character-state {
+  font-size: 14px;
+  color: white;
+  text-align: center;
+}
