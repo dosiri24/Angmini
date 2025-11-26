@@ -25,8 +25,8 @@ def load_dotenv(env_path: Optional[Path] = None, override: bool = True) -> None:
                   설정될 수 있어, .env 파일을 우선시한다.
     """
     if env_path is None:
-        # 현재 파일 기준으로 .env 찾기
-        env_path = Path(__file__).parent / ".env"
+        # 프로젝트 루트의 .env 찾기 (backend의 상위 디렉토리)
+        env_path = Path(__file__).parent.parent / ".env"
 
     if not env_path.exists():
         return

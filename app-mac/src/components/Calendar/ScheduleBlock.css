@@ -1,0 +1,38 @@
+/**
+ * 일정 블록 스타일
+ */
+
+.schedule-block {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: opacity 0.2s, transform 0.1s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.schedule-block:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+.block-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-time {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}

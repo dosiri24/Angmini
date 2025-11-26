@@ -1,0 +1,7 @@
+/* 채팅 컨테이너: 전체 채팅 영역 */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a2e;
+}

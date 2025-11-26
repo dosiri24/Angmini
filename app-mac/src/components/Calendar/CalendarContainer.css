@@ -1,0 +1,9 @@
+/**
+ * 달력 컨테이너 스타일
+ */
+
+.calendar-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}

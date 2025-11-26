@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 # Discord 메시지 최대 길이
 MAX_MESSAGE_LENGTH = 2000
 
+# 데스크톱 앱 메시지 식별용 prefix
+# Why: 프론트엔드(데스크톱 앱)가 봇 토큰으로 메시지를 보내므로,
+# 봇 자신의 메시지로 인식되는 문제를 해결하기 위해 prefix로 구분
+DESKTOP_USER_PREFIX = "[DESKTOP_USER] "
+
 
 def split_message(text: str, max_length: int = MAX_MESSAGE_LENGTH) -> list[str]:
     """
@@ -202,9 +207,18 @@ class AngminiBot(commands.Bot):
         Why: 자연어 메시지를 Agent에게 전달하여 처리한다.
         키워드 파싱 없이 100% LLM이 의도를 파악한다. (CLAUDE.md 원칙)
         """
-        # 봇 자신의 메시지 무시
-        if message.author == self.user:
-            return
+        # 데스크톱 앱에서 보낸 메시지인지 확인 (prefix 기반)
+        is_desktop_user = message.content.startswith(DESKTOP_USER_PREFIX)
+        user_content = message.content
+
+        if is_desktop_user:
+            # prefix 제거하여 실제 사용자 메시지 추출
+            user_content = message.content[len(DESKTOP_USER_PREFIX):]
+            logger.info(f"Desktop user message detected: {user_content[:50]}...")
+        else:
+            # 봇 자신의 메시지 무시 (prefix 없는 경우만)
+            if message.author == self.user:
+                return
 
         # 봇 멘션 없고, 지정 채널이 아니면 무시
         if self._target_channel_id:
@@ -221,7 +235,7 @@ class AngminiBot(commands.Bot):
         async with message.channel.typing():
             try:
                 # Agent에게 메시지 처리 위임 (자연어 → 구조화는 LLM이 담당)
-                response = await self._agent.process_message(message.content)
+                response = await self._agent.process_message(user_content)
 
                 # 응답 전송 (긴 메시지 분할)
                 chunks = split_message(response)
