@@ -3,13 +3,13 @@
  * Why: 달력 그리드(7열 x 6행)로 월간 일정 개요 표시
  */
 import { useMemo } from 'react';
-import { getDatesWithSchedules } from './dummyData';
 import './MonthCalendar.css';
 
 interface MonthCalendarProps {
   currentMonth: Date;
   onMonthChange: (date: Date) => void;
   onDateSelect: (date: Date) => void;
+  getDatesWithSchedules: () => Set<string>;
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
@@ -18,6 +18,7 @@ export function MonthCalendar({
   currentMonth,
   onMonthChange,
   onDateSelect,
+  getDatesWithSchedules,
 }: MonthCalendarProps) {
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -49,11 +50,20 @@ export function MonthCalendar({
     return days;
   }, [year, month]);
 
-  /** 일정 있는 날짜 */
-  const datesWithSchedules = useMemo(
-    () => getDatesWithSchedules(year, month),
-    [year, month]
-  );
+  /** 일정 있는 날짜 (YYYY-MM-DD Set에서 현재 월의 날짜만 추출) */
+  const datesWithSchedulesInMonth = useMemo(() => {
+    const allDates = getDatesWithSchedules();
+    const daysInMonth = new Set<number>();
+
+    allDates.forEach((dateStr) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      if (y === year && m === month + 1) {
+        daysInMonth.add(d);
+      }
+    });
+
+    return daysInMonth;
+  }, [getDatesWithSchedules, year, month]);
 
   /** 오늘 날짜 */
   const today = new Date();
@@ -109,7 +119,7 @@ export function MonthCalendar({
           const dayOfWeek = idx % 7;
           const isSunday = dayOfWeek === 0;
           const isSaturday = dayOfWeek === 6;
-          const hasSchedule = day !== null && datesWithSchedules.has(day);
+          const hasSchedule = day !== null && datesWithSchedulesInMonth.has(day);
 
           return (
             <div

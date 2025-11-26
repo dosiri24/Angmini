@@ -25,8 +25,15 @@ const START_MINUTES = START_HOUR * 60;
 const HOUR_HEIGHT = 50;
 
 export function ScheduleBlock({ schedule, onClick }: ScheduleBlockProps) {
+  // 시간이 없는 일정은 표시하지 않음 (종일 일정 등)
+  if (!schedule.startTime) {
+    return null;
+  }
+
   const startMinutes = timeToMinutes(schedule.startTime);
-  const endMinutes = timeToMinutes(schedule.endTime);
+  const endMinutes = schedule.endTime
+    ? timeToMinutes(schedule.endTime)
+    : startMinutes + 60; // 종료 시간 없으면 1시간 기본
 
   // 시작 위치 (06:00 기준 offset)
   const topOffset = ((startMinutes - START_MINUTES) / 60) * HOUR_HEIGHT;
@@ -35,6 +42,10 @@ export function ScheduleBlock({ schedule, onClick }: ScheduleBlockProps) {
   const height = Math.max(20, ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT);
 
   const backgroundColor = CATEGORY_COLORS[schedule.category] || CATEGORY_COLORS['기타'];
+
+  const timeText = schedule.endTime
+    ? `${schedule.startTime} - ${schedule.endTime}`
+    : schedule.startTime;
 
   return (
     <div
@@ -47,9 +58,7 @@ export function ScheduleBlock({ schedule, onClick }: ScheduleBlockProps) {
       onClick={() => onClick?.(schedule)}
     >
       <span className="block-title">{schedule.title}</span>
-      <span className="block-time">
-        {schedule.startTime} - {schedule.endTime}
-      </span>
+      <span className="block-time">{timeText}</span>
     </div>
   );
 }

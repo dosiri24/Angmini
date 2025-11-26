@@ -1,8 +1,8 @@
 /**
  * 더미 일정 데이터
- * Why: Phase 3 UI 테스트용 임시 데이터
+ * Why: Phase 3 UI 테스트용 임시 데이터 (실제 연동 후에는 미사용)
  */
-import type { Schedule, ScheduleCategory } from '../../types';
+import type { Schedule } from '../../types';
 
 /** 오늘 날짜 기준 YYYY-MM-DD 문자열 생성 */
 function getDateString(daysOffset: number = 0): string {
@@ -15,71 +15,87 @@ function getDateString(daysOffset: number = 0): string {
 export const DUMMY_SCHEDULES: Schedule[] = [
   // 어제
   {
-    id: '1',
+    id: 1,
     title: '영어 스터디',
     date: getDateString(-1),
     startTime: '10:00',
     endTime: '12:00',
+    location: null,
     category: '학업',
+    status: '대기',
   },
   // 오늘
   {
-    id: '2',
+    id: 2,
     title: '팀 미팅',
     date: getDateString(0),
     startTime: '09:00',
     endTime: '10:30',
+    location: '회의실 A',
     category: '업무',
+    status: '대기',
   },
   {
-    id: '3',
+    id: 3,
     title: '점심 약속',
     date: getDateString(0),
     startTime: '12:00',
     endTime: '13:30',
+    location: '강남역',
     category: '약속',
+    status: '대기',
   },
   {
-    id: '4',
+    id: 4,
     title: '운동',
     date: getDateString(0),
     startTime: '18:00',
     endTime: '19:30',
+    location: '헬스장',
     category: '루틴',
+    status: '대기',
   },
   // 내일
   {
-    id: '5',
+    id: 5,
     title: '프로젝트 발표',
     date: getDateString(1),
     startTime: '14:00',
     endTime: '16:00',
+    location: '대강당',
     category: '학업',
+    status: '대기',
   },
   {
-    id: '6',
+    id: 6,
     title: '저녁 약속',
     date: getDateString(1),
     startTime: '19:00',
     endTime: '21:00',
+    location: '홍대',
     category: '약속',
+    status: '대기',
   },
   // 이번 주
   {
-    id: '7',
+    id: 7,
     title: '온라인 강의',
     date: getDateString(2),
     startTime: '10:00',
     endTime: '11:30',
+    location: null,
     category: '학업',
+    status: '대기',
   },
   {
-    id: '8',
+    id: 8,
     title: '독서',
     date: getDateString(3),
     startTime: '20:00',
     endTime: '21:30',
+    location: '집',
     category: '개인',
+    status: '대기',
   },
 ];
 

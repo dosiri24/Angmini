@@ -4,7 +4,6 @@
  */
 import { useMemo } from 'react';
 import type { Schedule } from '../../types';
-import { getSchedulesForDate } from './dummyData';
 import { ScheduleBlock } from './ScheduleBlock';
 import './DaySchedule.css';
 
@@ -12,6 +11,7 @@ interface DayScheduleProps {
   selectedDate: Date;
   onBack: () => void;
   onScheduleClick?: (schedule: Schedule) => void;
+  getSchedulesForDate: (date: string) => Schedule[];
 }
 
 /** 시간표 시작/끝 시간 */
@@ -27,7 +27,12 @@ function formatDateString(date: Date): string {
 /** 요일 이름 */
 const WEEKDAY_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 
-export function DaySchedule({ selectedDate, onBack, onScheduleClick }: DayScheduleProps) {
+export function DaySchedule({
+  selectedDate,
+  onBack,
+  onScheduleClick,
+  getSchedulesForDate,
+}: DayScheduleProps) {
   /** 어제/오늘/내일 날짜 계산 */
   const threeDays = useMemo(() => {
     const days: Date[] = [];

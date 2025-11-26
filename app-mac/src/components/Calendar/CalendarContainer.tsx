@@ -10,10 +10,20 @@ import { DaySchedule } from './DaySchedule';
 import './CalendarContainer.css';
 
 interface CalendarContainerProps {
+  schedules: Schedule[];
+  getSchedulesForDate: (date: string) => Schedule[];
+  getDatesWithSchedules: () => Set<string>;
   onScheduleClick?: (schedule: Schedule) => void;
 }
 
-export function CalendarContainer({ onScheduleClick }: CalendarContainerProps) {
+export function CalendarContainer({
+  schedules: _schedules, // 전체 일정 (향후 확장용)
+  getSchedulesForDate,
+  getDatesWithSchedules,
+  onScheduleClick,
+}: CalendarContainerProps) {
+  // _schedules은 향후 일정 목록 표시, 검색 등에 활용 예정
+  void _schedules;
   const [view, setView] = useState<CalendarView>('month');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -48,12 +58,14 @@ export function CalendarContainer({ onScheduleClick }: CalendarContainerProps) {
           currentMonth={currentMonth}
           onMonthChange={handleMonthChange}
           onDateSelect={handleDateSelect}
+          getDatesWithSchedules={getDatesWithSchedules}
         />
       ) : (
         <DaySchedule
           selectedDate={selectedDate}
           onBack={handleBackToMonth}
           onScheduleClick={handleScheduleClick}
+          getSchedulesForDate={getSchedulesForDate}
         />
       )}
     </div>

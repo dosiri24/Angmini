@@ -323,15 +323,32 @@ export function useDiscord(): UseDiscordReturn {
       }
     };
 
-    logger.info(MODULE, 'Starting polling initialization');
-    initLastMessageId();
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let isCancelled = false;
 
-    logger.info(MODULE, 'Setting up polling interval', { interval: POLL_INTERVAL });
-    const intervalId = setInterval(pollMessages, POLL_INTERVAL);
+    // 초기화 완료 후 폴링 시작 (타이밍 이슈 방지)
+    const startPolling = async () => {
+      logger.info(MODULE, 'Starting polling initialization');
+      await initLastMessageId();
+
+      // cleanup 중에 취소되었으면 폴링 시작하지 않음
+      if (isCancelled) {
+        logger.debug(MODULE, 'Polling cancelled before start');
+        return;
+      }
+
+      logger.info(MODULE, 'Setting up polling interval', { interval: POLL_INTERVAL });
+      intervalId = setInterval(pollMessages, POLL_INTERVAL);
+    };
+
+    startPolling();
 
     return () => {
       logger.info(MODULE, 'Cleaning up polling interval');
-      clearInterval(intervalId);
+      isCancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
     };
   }, [config]);
 

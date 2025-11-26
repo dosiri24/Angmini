@@ -16,10 +16,24 @@ export interface Message {
 }
 
 export interface Schedule {
-  id: string;
+  id: number;
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string | null; // HH:MM
+  endTime: string | null; // HH:MM
+  location: string | null;
+  category: ScheduleCategory;
+  status: '대기' | '완료';
+}
+
+// 백엔드 응답 형식 (snake_case)
+export interface ScheduleFromServer {
+  id: number;
   title: string;
   date: string;
-  startTime: string;
-  endTime: string;
-  category: ScheduleCategory;
+  start_time: string | null;
+  end_time: string | null;
+  location: string | null;
+  category: string;
+  status: string;
 }

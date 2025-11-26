@@ -7,10 +7,13 @@ import type { ContentMode } from '../../types';
 import { useCharacter } from '../../hooks/useCharacter';
 import { useMessages } from '../../hooks/useMessages';
 import { useDiscord } from '../../hooks/useDiscord';
+import { useSchedules } from '../../hooks/useSchedules';
+import { stripScheduleDataMarker } from '../../utils/scheduleParser';
 import { Character } from '../Character/Character';
 import { ChatContainer } from '../Chat';
 import { CalendarContainer } from '../Calendar';
 import { Toggle } from '../Toggle/Toggle';
+import { Settings } from '../Settings';
 import logger from '../../utils/logger';
 import './Layout.css';
 
@@ -20,9 +23,11 @@ export function Layout() {
   logger.info(MODULE, 'Layout component rendering');
 
   const [mode, setMode] = useState<ContentMode>('chat');
+  const [showSettings, setShowSettings] = useState(false);
   const character = useCharacter();
   const { messages, addUserMessage, addBotMessage, addSystemMessage } = useMessages();
   const discord = useDiscord();
+  const schedules = useSchedules();
 
   logger.debug(MODULE, 'Discord state', {
     isConfigured: discord.isConfigured,
@@ -41,7 +46,14 @@ export function Layout() {
     logger.info(MODULE, 'Registering bot message callback');
     discord.onBotMessage((content) => {
       logger.info(MODULE, 'Bot message received in Layout', { contentLength: content.length });
-      addBotMessage(content);
+
+      // 일정 데이터 추출 시도
+      const hasScheduleData = schedules.processMessage(content);
+      logger.debug(MODULE, 'Schedule data extraction', { hasScheduleData });
+
+      // 채팅에는 마커 제거한 텍스트만 표시
+      const displayContent = stripScheduleDataMarker(content);
+      addBotMessage(displayContent);
       character.onMessageReceive();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,6 +103,15 @@ export function Layout() {
       {/* 상단: 캐릭터 영역 */}
       <Character state={character.state} />
 
+      {/* 설정 버튼 (우측 상단) */}
+      <button
+        className={`settings-btn ${!discord.isConfigured ? 'attention' : ''}`}
+        onClick={() => setShowSettings(true)}
+        title="Discord 설정"
+      >
+        ⚙
+      </button>
+
       {/* 중앙: 컨텐츠 영역 */}
       <div className="content-area">
         {mode === 'chat' ? (
@@ -100,12 +121,26 @@ export function Layout() {
             isLoading={discord.isLoading}
           />
         ) : (
-          <CalendarContainer />
+          <CalendarContainer
+            schedules={schedules.schedules}
+            getSchedulesForDate={schedules.getSchedulesForDate}
+            getDatesWithSchedules={schedules.getDatesWithSchedules}
+          />
         )}
       </div>
 
       {/* 하단: 토글 영역 */}
       <Toggle mode={mode} onModeChange={handleModeChange} />
+
+      {/* 설정 모달 */}
+      {showSettings && (
+        <Settings
+          isConfigured={discord.isConfigured}
+          onSave={discord.configure}
+          onClear={discord.clearConfig}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

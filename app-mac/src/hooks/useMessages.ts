@@ -1,9 +1,11 @@
 /**
  * 메시지 상태 관리 훅
  * Why: 채팅 메시지 목록을 중앙에서 관리, 추가/삭제 로직 캡슐화
+ *      로컬 캐시 지원으로 앱 재시작 시 대화 내역 복원
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Message, MessageType } from '../types';
+import { loadMessages, saveMessages, clearMessages as clearCachedMessages } from '../utils/localCache';
 
 // 유니크 ID 생성
 function generateId(): string {
@@ -11,7 +13,18 @@ function generateId(): string {
 }
 
 export function useMessages() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  // 초기값을 캐시에서 로드
+  const [messages, setMessages] = useState<Message[]>(() => loadMessages());
+  const isInitialMount = useRef(true);
+
+  // 메시지 변경 시 자동 저장 (초기 로드 제외)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    saveMessages(messages);
+  }, [messages]);
 
   // 메시지 추가
   const addMessage = useCallback(
@@ -46,9 +59,10 @@ export function useMessages() {
     [addMessage]
   );
 
-  // 메시지 전체 초기화
+  // 메시지 전체 초기화 (캐시도 함께 삭제)
   const clearMessages = useCallback(() => {
     setMessages([]);
+    clearCachedMessages();
   }, []);
 
   return {
