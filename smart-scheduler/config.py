@@ -11,12 +11,18 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-def load_dotenv(env_path: Optional[Path] = None) -> None:
+def load_dotenv(env_path: Optional[Path] = None, override: bool = True) -> None:
     """
     .env 파일을 읽어 환경변수로 로드한다.
 
     Why: python-dotenv 의존성 없이 간단하게 .env 파일을 파싱한다.
     외부 라이브러리 최소화 원칙.
+
+    Args:
+        env_path: .env 파일 경로 (None이면 config.py 기준으로 탐색)
+        override: True면 기존 환경변수를 덮어씀 (기본값: True)
+                  Why: Claude Code 등 IDE 환경에서 잘못된 환경변수가
+                  설정될 수 있어, .env 파일을 우선시한다.
     """
     if env_path is None:
         # 현재 파일 기준으로 .env 찾기
@@ -36,8 +42,8 @@ def load_dotenv(env_path: Optional[Path] = None) -> None:
                 key, _, value = line.partition("=")
                 key = key.strip()
                 value = value.strip()
-                # 이미 설정된 환경변수는 덮어쓰지 않음
-                if key and key not in os.environ:
+                # override=True면 덮어쓰기, False면 기존 값 유지
+                if key and (override or key not in os.environ):
                     os.environ[key] = value
 
 

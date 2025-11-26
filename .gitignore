@@ -62,6 +62,3 @@ logs/
 
 # Claude Code 관련
 claudedocs/
-
-# 테스트 경로 코드들  
-smart-scheduler/tests/
