@@ -4,14 +4,34 @@
 
 ---
 
+## ⚠️ 핵심 원칙 (CLAUDE.md 준수)
+
+### 순수 LLM 기반 원칙 (No Keyword Parsing)
+- **자연어 처리는 100% LLM이 담당**
+- Tool은 **구조화된 데이터만** 처리 (ISO 형식)
+- 키워드 파싱, 정규식 라우팅 **절대 금지**
+
+```
+올바른 흐름:
+사용자: "내일 3시에 미팅"
+    ↓
+LLM: 자연어 이해 → 구조화 변환  ← ✅ LLM이 담당
+    ↓
+LLM: add_schedule(date="2025-11-27", start_time="15:00")  ← ISO 형식
+    ↓
+Tool: 검증 후 DB 저장  ← 파싱 없음
+```
+
+---
+
 ## 폴더 구조 (Flat Start)
 
 ```
 smart-scheduler/
 ├── models.py        # Schedule 데이터 모델
 ├── database.py      # SQLite DB + Repository
-├── tools.py         # Tool 정의 및 구현
-├── agent.py         # LLM Agent (ReAct)
+├── tools.py         # Tool 정의 및 구현 (ISO 형식만 처리)
+├── agent.py         # LLM Agent (ReAct) - 자연어→구조화 담당
 ├── bot.py           # Discord Bot
 ├── config.py        # 환경설정
 ├── tests/           # 테스트 (TDD)
@@ -90,60 +110,74 @@ smart-scheduler/
 
 ---
 
-## Phase 3: Tools 구현 (tools.py)
+## Phase 3: Tools 구현 (tools.py) ✅ 완료
 
 ### 3.1 Tool 스키마 정의
-- [ ] **IMPL**: Gemini Function Calling 형식으로 각 Tool 스키마 작성
-- [ ] **IMPL**: TOOL_DEFINITIONS 딕셔너리 생성
+- [x] **IMPL**: Gemini Function Calling 형식으로 각 Tool 스키마 작성
+- [x] **IMPL**: TOOL_DEFINITIONS 딕셔너리 생성
+- [x] **IMPL**: **ISO 형식 명시** (YYYY-MM-DD, HH:MM) - 순수 LLM 원칙
 
-### 3.2 add_schedule Tool
-- [ ] **TEST**: 정상 입력 시 일정 추가 테스트
-- [ ] **TEST**: 날짜 파싱 테스트 ("내일", "금요일", "11/28")
-- [ ] **IMPL**: add_schedule(title, date, time?, location?, category?)
-- [ ] **IMPL**: 자연어 날짜 → date 변환 헬퍼
+### ~~3.2 자연어 날짜 파싱~~ ❌ 삭제됨
+> **CLAUDE.md 원칙 위반으로 제거**
+> - ~~parse_natural_date 함수~~ → LLM이 담당
+> - Tool은 ISO 형식만 처리
+
+### 3.2 add_schedule Tool (수정됨)
+- [x] **TEST**: 정상 입력 시 일정 추가 테스트 (ISO 형식)
+- [x] **TEST**: 잘못된 날짜 형식 거부 테스트 ← 신규
+- [x] **IMPL**: add_schedule(title, date, start_time?, end_time?, location?, category?)
+- [x] **IMPL**: ISO 형식 검증 (자연어 입력 시 에러 반환)
 
 ### 3.3 get_schedules_for_date Tool
-- [ ] **TEST**: 특정 날짜 조회 테스트
-- [ ] **TEST**: 일정 없는 날짜 빈 리스트 테스트
-- [ ] **IMPL**: get_schedules_for_date(date) → List[dict]
+- [x] **TEST**: 특정 날짜 조회 테스트 (ISO 형식)
+- [x] **TEST**: 잘못된 날짜 형식 거부 테스트 ← 신규
+- [x] **IMPL**: get_schedules_for_date(date) → List[dict]
 
 ### 3.4 complete_schedule Tool
-- [ ] **TEST**: 완료 처리 후 status 변경 테스트
-- [ ] **TEST**: 없는 ID 에러 처리 테스트
-- [ ] **IMPL**: complete_schedule(schedule_id) → dict
+- [x] **TEST**: 완료 처리 후 status 변경 테스트
+- [x] **TEST**: 없는 ID 에러 처리 테스트
+- [x] **IMPL**: complete_schedule(schedule_id) → dict
 
 ### 3.5 check_travel_time Tool
-- [ ] **TEST**: 이전 일정 있을 때 이동시간 추정 테스트
-- [ ] **TEST**: 이전 일정 없을 때 처리 테스트
-- [ ] **IMPL**: check_travel_time(date, time, new_location) → dict
-- [ ] **IMPL**: 이동시간 추정 로직 (자주 가는 경로 캐시 or LLM 추정)
+- [x] **TEST**: 이전 일정 있을 때 이동시간 추정 테스트 (ISO 형식)
+- [x] **TEST**: 잘못된 날짜 형식 거부 테스트 ← 신규
+- [x] **IMPL**: check_travel_time(date, time, new_location) → dict
+- [x] **IMPL**: 이동시간 추정 로직 (간단한 휴리스틱 - MVP)
 
 ### 3.6 Tool 실행기
-- [ ] **TEST**: tool_name으로 함수 호출 테스트
-- [ ] **IMPL**: execute_tool(name, params) → dict
+- [x] **TEST**: tool_name으로 함수 호출 테스트
+- [x] **IMPL**: execute_tool(name, params) → dict
 
 ---
 
-## Phase 4: LLM Agent (agent.py)
+## Phase 4: LLM Agent (agent.py) ✅ 완료
 
 ### 4.1 Gemini 클라이언트 설정
-- [ ] **IMPL**: config.py에서 API 키 로드
-- [ ] **IMPL**: Gemini 모델 초기화 (gemini-1.5-flash)
-- [ ] **IMPL**: Tool 스키마 등록
+- [x] **IMPL**: config.py에서 API 키 로드
+- [x] **IMPL**: Gemini 모델 초기화 (gemini-2.0-flash)
+- [x] **IMPL**: Tool 스키마 등록 (build_gemini_tools)
 
-### 4.2 단일 턴 Tool Calling
-- [ ] **TEST**: 단순 요청 → Tool 호출 테스트 (mock)
-- [ ] **IMPL**: process_message(user_input) → response
-- [ ] **IMPL**: Tool 호출 결과 파싱
+### 4.2 대화 메모리 (Memory)
+- [x] **TEST**: 대화 히스토리 저장/조회 테스트
+- [x] **IMPL**: ConversationMemory 클래스 (최근 N턴 유지)
+- [x] **IMPL**: add(role, content), get_context(), clear() 메서드
+- [x] **IMPL**: Gemini chat 세션과 연동
 
-### 4.3 ReAct 패턴 (멀티 턴)
-- [ ] **TEST**: 일정 추가 후 이동시간 확인까지 연속 실행 테스트
-- [ ] **IMPL**: 반복 루프 - Tool 호출 → 결과 확인 → 추가 필요? → 반복/종료
-- [ ] **IMPL**: 최대 반복 횟수 제한 (무한루프 방지)
+### 4.3 단일 턴 Tool Calling (async)
+- [x] **TEST**: 단순 요청 → Tool 호출 테스트 (mock)
+- [x] **IMPL**: async process_message(user_input) → response
+- [x] **IMPL**: send_message_async() 사용 (비동기 LLM 호출)
+- [x] **IMPL**: Tool 호출 결과 파싱
+- [x] **IMPL**: **자연어 → ISO 형식 변환은 LLM이 수행** ← 핵심
 
-### 4.4 응답 생성
-- [ ] **TEST**: Tool 결과 → 자연어 응답 변환 테스트
-- [ ] **IMPL**: 최종 응답 포맷팅 (이모지, 구조화)
+### 4.4 ReAct 패턴 (멀티 턴)
+- [x] **TEST**: 일정 추가 후 이동시간 확인까지 연속 실행 테스트
+- [x] **IMPL**: 반복 루프 - Tool 호출 → 결과 확인 → 추가 필요? → 반복/종료
+- [x] **IMPL**: 최대 반복 횟수 제한 (무한루프 방지)
+
+### 4.5 응답 생성
+- [x] **TEST**: Tool 결과 → 자연어 응답 변환 테스트
+- [x] **IMPL**: 최종 응답 포맷팅 (이모지, 친근한 톤)
 
 ---
 
@@ -159,11 +193,11 @@ smart-scheduler/
 - [ ] **IMPL**: Agent 호출 → 응답 전송
 - [ ] **IMPL**: 에러 핸들링 (사용자 친화적 메시지)
 
-### 5.3 빠른 명령어
-- [ ] **IMPL**: `!today` - 오늘 일정 조회
-- [ ] **IMPL**: `!tomorrow` - 내일 일정 조회
-- [ ] **IMPL**: `!tasks` - 다가오는 할일 목록
-- [ ] **IMPL**: `!done <id>` - 완료 처리
+### 5.3 빠른 명령어 (슬래시 커맨드 - 예외 허용)
+- [ ] **IMPL**: `/today` - 오늘 일정 조회
+- [ ] **IMPL**: `/tomorrow` - 내일 일정 조회
+- [ ] **IMPL**: `/tasks` - 다가오는 할일 목록
+- [ ] **IMPL**: `/done <id>` - 완료 처리
 
 ### 5.4 실행 스크립트
 - [ ] **IMPL**: main() 함수
@@ -188,14 +222,14 @@ smart-scheduler/
 
 ---
 
-## 진행 상태 추적
+## 진행 상태 추적 (시작과 완료 일자 표시에 시각까지 명시하고, 이때 시간은 직접 확인할 것.)
 
-| Phase | 상태 | 시작일 | 완료일 |
-|-------|------|--------|--------|
-| 1. 데이터 모델 | ✅ 완료 | 2025-11-26 | 2025-11-26 |
-| 2. 데이터베이스 | ✅ 완료 | 2025-11-26 | 2025-11-26 |
-| 3. Tools | ⏳ 대기 | - | - |
-| 4. LLM Agent | ⏳ 대기 | - | - |
+| Phase | 상태 | 시작 | 완료 |
+|-------|------|------|------|
+| 1. 데이터 모델 | ✅ 완료 | 2025-11-26 12:49 | 2025-11-26 12:55 |
+| 2. 데이터베이스 | ✅ 완료 | 2025-11-26 12:55 | 2025-11-26 12:57 |
+| 3. Tools | ✅ 완료 | 2025-11-26 13:08 | 2025-11-26 13:56 |
+| 4. LLM Agent | ✅ 완료 | 2025-11-26 14:00 | 2025-11-26 14:08 |
 | 5. Discord Bot | ⏳ 대기 | - | - |
 | 6. 통합/마무리 | ⏳ 대기 | - | - |
 
@@ -203,3 +237,4 @@ smart-scheduler/
 
 *작성일: 2025-11-26*
 *설계문서 참조: SmartScheduler-설계문서-v4.md*
+*최종수정: 2025-11-26 14:08 - Phase 4 완료 (LLM Agent 구현)*
