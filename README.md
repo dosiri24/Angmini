@@ -29,7 +29,7 @@
 ### 1. 의존성 설치
 
 ```bash
-cd smart-scheduler
+cd backend
 pip install -r requirements.txt
 ```
 
@@ -130,7 +130,7 @@ python3 -m pytest tests/ -v -k "not Integration"
 ## 프로젝트 구조
 
 ```
-smart-scheduler/
+backend/
 ├── models.py        # Schedule 데이터 모델
 ├── database.py      # SQLite DB + Repository
 ├── tools.py         # Tool 정의 및 구현 (ISO 형식만 처리)
