@@ -12,7 +12,7 @@ from typing import Any, Optional
 from collections import deque
 
 import google.generativeai as genai
-from google.generativeai.types import FunctionDeclaration, Tool
+from google.generativeai.types import FunctionDeclaration, Tool, content_types
 
 from config import config
 from database import Database
@@ -317,7 +317,6 @@ class Agent:
                 logger.info(f"Tool result: {result}")
 
                 # Gemini에 전달할 형식으로 변환
-                from google.generativeai.types import content_types
                 tool_response_parts.append(
                     content_types.to_part({
                         "function_response": {

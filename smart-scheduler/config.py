@@ -54,9 +54,9 @@ class Config:
     database_path: str
     log_level: str
 
-    # Gemini 모델 설정
-    gemini_flash_model: str = "gemini-2.0-flash"  # 빠른 응답용
-    gemini_pro_model: str = "gemini-2.0-flash-thinking-exp"  # 복잡한 추론용 (실험적)
+    # Gemini 모델 설정 (CLAUDE.md 강제 - 임의 변경 금지)
+    gemini_flash_model: str = "gemini-flash-latest"  # 빠른 응답용
+    gemini_pro_model: str = "gemini-3.0-pro"  # 복잡한 추론용
 
     # Agent 설정
     max_react_iterations: int = 5  # ReAct 무한루프 방지

@@ -154,7 +154,7 @@ smart-scheduler/
 
 ### 4.1 Gemini 클라이언트 설정
 - [x] **IMPL**: config.py에서 API 키 로드
-- [x] **IMPL**: Gemini 모델 초기화 (gemini-2.0-flash)
+- [x] **IMPL**: Gemini 모델 초기화 (gemini-flash-latest)
 - [x] **IMPL**: Tool 스키마 등록 (build_gemini_tools)
 
 ### 4.2 대화 메모리 (Memory)
@@ -181,27 +181,29 @@ smart-scheduler/
 
 ---
 
-## Phase 5: Discord Bot (bot.py)
+## Phase 5: Discord Bot (bot.py) ✅ 완료
 
 ### 5.1 Bot 기본 설정
-- [ ] **IMPL**: discord.py 클라이언트 초기화
-- [ ] **IMPL**: on_ready 이벤트
-- [ ] **IMPL**: 특정 채널에서만 응답
+- [x] **IMPL**: discord.py 클라이언트 초기화 (AngminiBot 클래스)
+- [x] **IMPL**: on_ready 이벤트 (상태 메시지 설정)
+- [x] **IMPL**: 특정 채널에서만 응답 (target_channel_id 설정)
 
 ### 5.2 메시지 처리
-- [ ] **IMPL**: on_message 이벤트
-- [ ] **IMPL**: Agent 호출 → 응답 전송
-- [ ] **IMPL**: 에러 핸들링 (사용자 친화적 메시지)
+- [x] **IMPL**: on_message 이벤트 (자연어 → Agent 위임)
+- [x] **IMPL**: Agent 호출 → 응답 전송 (typing 표시)
+- [x] **IMPL**: 에러 핸들링 (사용자 친화적 메시지)
+- [x] **IMPL**: 긴 메시지 분할 (split_message, 2000자 제한)
 
 ### 5.3 빠른 명령어 (슬래시 커맨드 - 예외 허용)
-- [ ] **IMPL**: `/today` - 오늘 일정 조회
-- [ ] **IMPL**: `/tomorrow` - 내일 일정 조회
-- [ ] **IMPL**: `/tasks` - 다가오는 할일 목록
-- [ ] **IMPL**: `/done <id>` - 완료 처리
+- [x] **IMPL**: `/today` - 오늘 일정 조회
+- [x] **IMPL**: `/tomorrow` - 내일 일정 조회
+- [x] **IMPL**: `/tasks` - 다가오는 할일 목록
+- [x] **IMPL**: `/done <id>` - 완료 처리
+- [x] **IMPL**: `/help` - 사용 가이드
 
 ### 5.4 실행 스크립트
-- [ ] **IMPL**: main() 함수
-- [ ] **IMPL**: `python bot.py`로 실행 가능하게
+- [x] **IMPL**: main() 함수 (asyncio.run)
+- [x] **IMPL**: `python bot.py`로 실행 가능하게
 
 ---
 
@@ -230,7 +232,7 @@ smart-scheduler/
 | 2. 데이터베이스 | ✅ 완료 | 2025-11-26 12:55 | 2025-11-26 12:57 |
 | 3. Tools | ✅ 완료 | 2025-11-26 13:08 | 2025-11-26 13:56 |
 | 4. LLM Agent | ✅ 완료 | 2025-11-26 14:00 | 2025-11-26 14:08 |
-| 5. Discord Bot | ⏳ 대기 | - | - |
+| 5. Discord Bot | ✅ 완료 | 2025-11-26 15:12 | 2025-11-26 15:14 |
 | 6. 통합/마무리 | ⏳ 대기 | - | - |
 
 ---
