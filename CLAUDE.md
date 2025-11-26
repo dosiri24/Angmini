@@ -1,305 +1,122 @@
-# CLAUDE.md
-
-AI assistant guidance for working with the Angmini codebase.
-
-## Project Overview
-
-**Angmini**: CrewAI-based multi-agent system with Gemini LLM, specialized agents (Planner, File, Notion, Memory, AppleApps), MCP tool ecosystem, and vector-based long-term memory (SQLite + FAISS + Qwen3).
-
-## Quick Reference
-
-**Test Command**: `bin/angmini --no-stream "안녕"` (3-5s)
-**Debug Mode**: `bin/angmini --debug "query"`
-**Run App**: `python main.py` (uses `DEFAULT_INTERFACE` from `.env`)
-**Logs**: `logs/YYYYMMDD_HHMMSS.log`, `memory_embedding.log`
-**Memory Data**: `data/memory/` (memories.db, memory.index, memory.ids)
-
-## Commands
-
-### Testing
-```bash
-bin/angmini --no-stream "안녕"        # Quick test (3-5s)
-bin/angmini --debug "query"          # Verbose CrewAI output
-bin/angmini --version                # Version check
-```
-
-⚠️ **Timeout**: Complex queries (8-20s) may timeout. Use `timeout=600000` in Bash tool or test with simple commands.
-
-**Success Indicators**: `🍎 Apple MCP 서버가 준비되었습니다!` (macOS), `📝 최종 결과:`, exit code 0
-
-**Common Errors**: Missing `GEMINI_API_KEY` (check `.env`), `ModuleNotFoundError` (activate venv: `source .venv/bin/activate`)
-
-### Development
-```bash
-python main.py                       # Run app
-LOG_LEVEL=DEBUG python main.py       # Debug mode
-pytest tests/                        # Run tests
-python scripts/gemini_quickcheck.py  # API check
-```
-
-## Core Development Rules
-
-1. **Design-First**: Consult `PLAN_for_AI_Agent.md` before coding. Never alter architecture without user approval.
-2. **Extensibility**: Use `AgentFactory`, `ToolRegistry` patterns. Minimize code changes when adding components.
-3. **Explicit Errors**: Raise clear exceptions (don't mask failures). Enable root cause identification.
-4. **Root Cause Fixes**: Implement structural solutions, not workarounds.
-5. **Why Comments**: Explain intent ("why"), not mechanics ("what").
-6. **User-Friendly**: Minimize jargon, use simple terms.
-
-### 🚨 CRITICAL: 100% LLM-Based Decision Making (Rule 7)
-
-**STRICTLY PROHIBITED**: Keyword parsing or pattern matching for user intent/agent selection.
-
-❌ **WRONG**:
-```python
-if "파일" in request or "file" in request.lower():
-    select FileAgent
-```
-
-✅ **CORRECT**: Let PlannerAgent's LLM naturally analyze requests and delegate via CrewAI hierarchical process.
-
-**Rationale**: Keyword parsing is fragile, non-extensible, contradicts LLM-based architecture. CrewAI delegation provides superior flexibility.
-
-## Architecture
-
-### Execution Flow
-1. `main.py` → Interface (CLI/Discord) → `AngminiCrew.kickoff()`
-2. `TaskFactory` creates Task objects from user input
-3. CrewAI Hierarchical Process: PlannerAgent (Manager) delegates to workers
-4. Workers (File/Notion/Memory/AppleApps) use specialized MCP tools
-5. Results aggregated, execution context saved to memory
-
-### Agents & Tools
-- **PlannerAgent**: Manager, delegates via LLM
-- **FileAgent**: FileTool (file I/O, search)
-- **NotionAgent**: NotionTool (task/project CRUD)
-- **MemoryAgent**: MemoryTool (vector search via SQLite+FAISS+Qwen3)
-- **AppleAppsAgent**: AppleTool (macOS apps via Apple MCP subprocess)
-
-MCP tools (`mcp/tools/`) inherit `ToolBlueprint`, adapted to CrewAI `BaseTool` via `mcp/crewai_adapters/`.
-
-### Memory System
-- **Storage**: `ai/memory/storage/` (SQLite metadata + FAISS vectors + Qwen3 embeddings)
-- **Capture**: `ExecutionContext` → `MemoryCurator` (LLM summary) → `Deduplicator` → Storage
-- **Retrieval**: `MemoryRepository.search()` (embedding similarity) or `CascadedRetriever` (iterative LLM-filtered)
-
-### Interfaces
-- **CLI** (`interface/cli.py`): Interactive REPL, streams output
-- **Discord** (`interface/discord_bot.py`): Async message handler
-- Switch via `DEFAULT_INTERFACE` in `.env`
-
-## Key Files
-
-**Core**
-- `ai/core/`: config.py (env loader), logger.py (timestamped logs), exceptions.py (custom errors)
-
-**CrewAI System**
-- `crew/crew_config.py`: AngminiCrew orchestrator
-- `crew/task_factory.py`: User input → Task objects
-- `agents/`: AgentFactory, base_agent.py, planner/file/notion/memory/apple_apps agents
-
-**MCP Tools**
-- `mcp/tools/`: ToolBlueprint implementations (file_tool, notion_tool, memory_tool, apple_tool)
-- `mcp/crewai_adapters/`: MCP→CrewAI BaseTool wrappers
-
-**Memory**
-- `ai/memory/service.py`: High-level API (capture, search)
-- `ai/memory/storage/`: SQLite/FAISS repository, vector_index, embeddings
-
-**External**
-- `external/apple-mcp/`: Git submodule (TypeScript MCP for macOS apps)
-
-## Environment Variables (`.env`)
-
-**Required**: `GEMINI_API_KEY`, `DEFAULT_INTERFACE` (cli/discord)
-**Optional**: `GEMINI_MODEL` (default: gemini-2.5-pro), `DISCORD_BOT_TOKEN`, `NOTION_API_KEY`, `NOTION_TODO_DATABASE_ID`, `NOTION_PROJECT_DATABASE_ID`, `LOG_LEVEL` (INFO), `CREW_PROCESS_TYPE` (hierarchical/sequential), `CREW_MEMORY_ENABLED`
-
-**Proactive Alert System**: `PROACTIVE_ENABLED` (default: true), `PROACTIVE_WORK_START_HOUR` (9), `PROACTIVE_WORK_END_HOUR` (24), `PROACTIVE_INTERVAL_MEAN` (30), `PROACTIVE_INTERVAL_STD` (15), `PROACTIVE_D2_D3_ALERT` (true), `PROACTIVE_CAPACITY_ALERT` (true)
-
-See `.env.example` for details.
-
-## Development Guidelines
-
-### Adding Agents
-1. Subclass `BaseAngminiAgent` in `agents/`
-2. Implement `role()`, `goal()`, `backstory()`, `tools()`
-3. Create tool adapter in `mcp/crewai_adapters/` if needed
-4. Register in `AgentFactory.create_all_agents()`
-
-### Adding Tools
-1. Subclass `ToolBlueprint` in `mcp/tools/`
-2. Implement `tool_name()`, `schema()`, `__call__()` → `ToolResult`
-3. Create CrewAI adapter in `mcp/crewai_adapters/`
-4. Assign to agent via `tools()` method
-
-### Modifying Agents
-- Prompts in `role()`, `goal()`, `backstory()` methods
-- `build_agent()` constructs CrewAI Agent with LLM config
-- Test with both hierarchical and sequential modes
-
-### Extending Memory
-- Capture triggers in `crew_config.py:kickoff()`
-- Customize `_should_capture_memory()` in `MemoryService`
-- Retention policy in `ai/memory/retention_policy.py`
-
-## MCP Tools - ALWAYS USE WHEN APPLICABLE
-
-### Available Tools
-- **brave-search**: Real-time web search, news, images - USE for current info, research
-- **playwright**: Browser automation, screenshots, web scraping - USE for UI testing, web interaction
-- **context7**: Up-to-date library documentation - USE before implementing any library code
-- **sequential-thinking**: Break complex tasks into steps - USE for multi-step workflows
-- **memory**: Persistent context storage - USE to remember project decisions
-- **codex**: Advanced code analysis - USE for refactoring, optimization
-- **chrome-devtools**: Live browser debugging - USE for frontend issues
-
-### Tool Usage Rules
-- ALWAYS check context7 before writing library code
-- ALWAYS use brave-search for latest API docs, package versions, best practices
-- ALWAYS use playwright for visual regression testing
-- ALWAYS use sequential-thinking for tasks with 3+ steps
-- Prefer MCP tools over manual bash scripts when available
-
-### Examples
-- "Check context7 for latest Next.js 15 patterns before implementing"
-- "Use playwright to screenshot the UI and compare with design"
-- "Search brave-search for current TypeScript best practices"
-
-### Code Review with Codex
-
-**Dual-AI Review Workflow**: Two AI perspectives for enhanced quality and security.
-
-#### Process
-
-1. **Claude Code Implementation**
-   - Write code, tests, documentation
-   - Follow project patterns and conventions
-   - *Why*: Initial implementation with project context
-
-2. **Codex MCP Auto-Review**
-   - Run: `/review-with-codex [files]` or `/codex review`
-   - Codex analyzes from different AI perspective
-   - *Why*: Catch issues Claude missed (security, edge cases, performance)
-
-3. **Incorporate Feedback**
-   - Review Codex suggestions systematically
-   - Apply improvements for security/performance/best practices
-   - Re-run tests to verify changes
-   - *Why*: Multi-perspective analysis reduces bugs and technical debt
-
-4. **Final Approval & Commit**
-   - Get Codex sign-off: `/codex approve`
-   - Commit message includes: `Reviewed by Codex`
-   - *Why*: Quality assurance audit trail
-
-#### Triggers
-
-**Required**:
-- Modified ≥2 files OR ≥50 lines
-- New functions/classes/modules
-- Security/API/interface changes
-
-**Skip**: Trivial changes (typos, formatting, docs only)
-
-**Quality Gates**: Tests pass → Codex review → Suggestions addressed → Codex approval → Commit
-
-## Common Issues
-
-1. **OpenMP Conflicts**: `KMP_DUPLICATE_LIB_OK=TRUE` set in `memory/factory.py` for PyTorch+FAISS
-2. **Apple MCP**: Must initialize before use (handled in CLI/Discord init)
-3. **CrewAI Output**: Rich console captured to prevent noise (`crew_config.py:kickoff`)
-4. **Agent Tools**: Each agent only accesses tools in its `tools()` method
-
-## Debugging
-
-- **Logs**: `logs/YYYYMMDD_HHMMSS.log`, `memory_embedding.log`
-- **Verbose**: `LOG_LEVEL=DEBUG` in `.env` (shows CrewAI output)
-- **Trace**: Search logs for agent role/goal during delegation
-- **Visual Output**: Comment out stdout/stderr capture in `crew_config.py`
-
-## Resources
-
-- **Roadmap**: `PLAN_for_AI_Agent.md`
-- **Docs**: `docs/` (USAGE.md, CREWAI_MIGRATION_PLAN.md, memory_maintenance.md, APPLE_TOOL_GUIDE.md)
-
-## Proactive Alert System (Phase 5)
-
-**능동 알림 시스템**: 정규분포 기반 타이머로 주기적으로 Notion TODO를 분석하고 Discord 채널에 지능적인 알림을 전송합니다.
-
-### 구조
-- **ai/proactive/**: 능동 알림 시스템 모듈
-  - `scheduler.py`: 메인 스케줄러 (정규분포 타이머, 백그라운드 스레드)
-  - `capacity_analyzer.py`: 작업 용량 분석 (총 소요 시간 vs 남은 시간)
-  - `advance_notifier.py`: D-2, D-3 사전 알림
-  - `state_manager.py`: JSON 상태 관리 (알림 히스토리, 중복 방지)
-  - `message_formatter.py`: Discord 메시지 포맷팅
-- **data/proactive/alert_history.json**: 상태 파일 (알림 히스토리, 마지막 알림 시간)
-
-### 환경변수 설정
-- `PROACTIVE_ENABLED`: 스케줄러 활성화 여부 (default: true)
-- `PROACTIVE_WORK_START_HOUR`: 활동 시작 시간 (default: 9)
-- `PROACTIVE_WORK_END_HOUR`: 활동 종료 시간 (default: 24)
-- `PROACTIVE_INTERVAL_MEAN`: 평균 실행 간격(분) (default: 30)
-- `PROACTIVE_INTERVAL_STD`: 표준편차(분) (default: 15)
-- `PROACTIVE_D2_D3_ALERT`: D-2/D-3 알림 활성화 (default: true)
-- `PROACTIVE_CAPACITY_ALERT`: 작업 용량 분석 알림 활성화 (default: true)
-- `DISCORD_PROACTIVE_CHANNEL_ID`: 알림을 보낼 Discord 채널 ID (필수)
-
-### 동작 방식
-1. **트리거**: 정규분포 기반 타이머 (환경변수로 설정 가능, 기본값: 평균 30분, 표준편차 15분)
-2. **활동 시간**: 환경변수로 설정 가능 (기본값: 09:00 ~ 24:00 KST)
-3. **실행 모드**: `python main.py --interface discord` 실행 시 백그라운드 스레드로 자동 시작
-4. **인터페이스**: Discord 전용 (환경변수 `DISCORD_PROACTIVE_CHANNEL_ID`로 지정한 채널에만 메시지 전송)
-5. **활성화 제어**: `PROACTIVE_ENABLED=false`로 전체 시스템 비활성화 가능
-6. **개별 알림 제어**: 각 알림 유형별 on/off 가능 (`PROACTIVE_D2_D3_ALERT`, `PROACTIVE_CAPACITY_ALERT`)
-
-### 알림 유형
-**유형 A: 작업 용량 분석 알림**
-- 대상: Notion TODO 중 오늘/내일 마감 + 마감 지났지만 미완료 작업
-- 분석: 총 예상 소요 시간 vs 남은 활동 시간
-- 판단: 🟢여유 / 🟡빠듯 / 🔴과부하
-- 권장 일정: 마감일 순으로 자동 생성 (휴식 30분 포함)
-- 발송 조건:
-  - 처리 대상 TODO ≥ 1개
-  - 총 예상 소요 시간 ≥ 1시간
-  - 마지막 용량 분석 알림 후 1시간 경과
-  - 마지막 봇 응답 후 30분 경과
-
-**유형 B: 마감일 사전 알림 (D-2, D-3)**
-- 대상: 마감일이 2~3일 후인 미완료 TODO
-- 발송: 하루 1회 (오전 우선)
-- 발송 조건:
-  - 마감일이 2~3일 후
-  - 작업 상태 미완료
-  - 해당 TODO에 대해 오늘 아직 알림 안 보냄
-
-### 중복 방지 로직
-- 용량 분석 알림: 1시간 간격
-- 사전 알림: 하루 1회 (자정 초기화)
-- 마지막 봇 응답 후 30분 이내는 알림 금지
-
-### 환경변수 (.env)
-```bash
-# Discord 능동 알림 채널 ID (필수)
-DISCORD_PROACTIVE_CHANNEL_ID=your-channel-id-for-proactive-alerts
-
-# Notion 예상 소요 시간 필드 (선택, 없으면 기본값 2시간)
-NOTION_TASK_ESTIMATED_HOURS_PROPERTY=예상소요시간
-```
-
-### 설정 방법
-1. Notion TODO 데이터베이스에 "예상소요시간" 필드 추가 (number 타입)
-2. `.env`에 `DISCORD_PROACTIVE_CHANNEL_ID` 설정 (채널 ID는 Discord에서 복사)
-3. `.env`에 `NOTION_TASK_ESTIMATED_HOURS_PROPERTY` 설정 (선택)
-4. Discord 봇 시작: `python main.py --interface discord`
-
-### 로깅
-- 알림 발송 로그: `logs/YYYYMMDD_HHMMSS.log`
-- 상태 파일: `data/proactive/alert_history.json`
-
-## Status
-
-✅ Phases 1-5 complete (CrewAI multi-agent + tools + memory + proactive alerts)
-🚧 Testing coverage incomplete
-
-**Legacy**: `interface/*_backup.py`, `ai/react_engine/` (ReAct engine preserved for reference, not actively used)
+# Angmini 개발 규칙 (v2.0 - Agentic Workflow)
+
+## 핵심 원칙 (Core Principles)
+
+이 문서는 Angmini 프로젝트의 **헌법**입니다. 당신은 **"높은 동시성을 다루는 분산 시스템 전문 스태프 소프트웨어 엔지니어(Staff Software Engineer)"**로서 행동합니다. 당신은 화려한 코드보다 가독성과 유지보수성을 중시하며, 모든 코드를 '미래의 부채'로 간주하여 신중하게 작성합니다.
+
+---
+
+## 개발 규칙
+
+### 1. 순수 LLM 기반 원칙 (No Keyword Parsing)
+- **자연어 키워드 파싱/정규식 라우팅 금지**: 모든 자연어 처리는 LLM이 담당
+- **도구 사용(Tool Use) 패턴**: LLM이 의도를 파악하고 적절한 도구를 호출
+- **모델 이분법**: `gemini-2.5-flash` (빠른 응답) / `gemini-3.0-pro` (복잡한 추론)
+- 슬래시 커맨드(`/help` 등)만 예외적으로 직접 라우팅 허용
+
+### 2. 최소 구현 원칙 (YAGNI)
+- **지시받은 기능만 구현한다**
+- "나중에 필요할 것 같아서" 추가하는 모든 코드 금지
+- 외부 라이브러리 도입 시 표준 라이브러리로 대체 불가능한지 검토 필수
+
+### 3. 문서화 원칙 & 단일 진실 공급원 (SSOT)
+- 모든 함수/클래스에 'Why'를 설명하는 주석 필수 (동작 방식은 코드로 설명)
+- **정보 중복 금지**: 아키텍처 결정은 `docs/architecture/`를, DB 스키마는 `schema.prisma` 등을 참조(Reference)할 것
+- 인라인 설명보다는 `@파일명` 참조를 통해 컨텍스트 효율성 증대
+
+### 4. 리소스 활용 및 검증 원칙 (Anti-Hallucination)
+- **가정 금지(No Assumptions)**: 파일 내용을 파일명으로 추측하지 말고 반드시 `read` 도구로 읽을 것
+- 라이브러리 메서드 존재 여부는 문서 검색이나 검증 코드로 확인할 것
+- **에러 로그 피드백**: 오류 발생 시 터미널 로그를 그대로 분석의 근거로 삼을 것
+
+### 5. 실제 동작 코드 원칙
+- 실제 동작하는 코드만 작성 (Pseudo-code 금지)
+- 모킹(Mocking)은 단위 테스트에서만 제한적으로 허용
+- 프로덕션 코드 내 테스트성 `print` 출력 금지
+
+### 6. 세션 위생 및 컨텍스트 관리 원칙 (Context Hygiene)
+- **Context Rot 방지**: 세션이 길어지거나 하나의 Task가 완료되면 즉시 `/compact` 또는 `/clear` 수행 제안
+- 중요한 의사결정이나 변경사항은 채팅에 남기지 말고 `progress.md` 또는 `decisions.md`에 즉시 기록 (외부 메모리 활용)
+- 긴 파일은 전체를 읽지 말고 `grep` 등을 활용하여 필요한 부분만 선별 로딩
+
+### 7. 기술 트렌드 리서치 원칙
+- 작업 착수 전 MCP 도구(WebSearch)로 최신 모범 사례(Best Practice) 확인
+- 레거시 패턴 대신 최신 LTS 버전의 공식 문서를 기준으로 구현
+
+### 8. 로깅 및 가시성 원칙
+- 적절한 로그 레벨 사용 (DEBUG, INFO, WARNING, ERROR)
+- 디버깅을 위한 로그는 명확한 식별자(Trace ID 등)를 포함하여 추적 가능하게 작성
+
+### 9. TDD 기반 에이전트 워크플로우
+- **Red-Green-Refactor 사이클 강제**:
+  1. (Red) 기능을 구현하기 전, 실패하는 테스트 코드를 먼저 작성한다.
+  2. (Green) 테스트를 통과하기 위한 '최소한'의 코드를 작성한다.
+  3. (Refactor) 테스트 통과를 유지하며 구조를 개선한다.
+- 테스트 없는 기능 구현 절대 금지
+
+### 10. 명명 원칙
+- 함수명, 클래스명은 '동사+목적어' 형태로 구체적으로 작성
+- 약어 사용 지양 (널리 통용되는 `id`, `req`, `res` 등은 예외)
+
+### 11. 코드 품질 및 설명 원칙
+- 결과 설명은 초보 개발자도 이해 가능하게 단계적으로
+- **구조화된 설명**: 줄글 대신 불렛 포인트, 체크박스 활용
+- 코드는 '방어적 프로그래밍(Defensive Programming)' 기법 적용
+
+### 12. 계획서 작성 원칙 (Chain of Thought)
+- 코드 작성 전, 반드시 `<plan>` 태그 내에 단계별 계획을 수립할 것
+- 계획 단계에서 다음을 수행해야 함:
+  - `<analysis>`: 관련 파일 분석 및 영향도 파악
+  - `<risk>`: 예상되는 에지 케이스 및 보안 취약점 점검
+  - `<spec>`: 구현할 입출력 인터페이스 정의
+
+### 13. 계획서 동기화 원칙
+- 사용자와의 대화로 변경된 명세는 즉시 `spec.md`나 계획서 파일에 반영
+- 채팅 기억(Memory)에 의존하지 말고 파일 기록(Storage)에 의존할 것
+
+### 14. 에러 핸들링 원칙
+- '조용한 실패(Silent Fail)' 금지
+- 예외는 명확하게 상위로 전파하거나, 적절한 에러 응답으로 변환
+- 자동 복구 로직은 명시적 요구가 있을 때만 구현
+
+### 15. 컨텍스트 오염 방지 및 계층 구조
+- **Rule File 200줄 제한**: 핵심 규칙은 간결하게 유지
+- 특정 모듈 작업 시에는 해당 디렉토리의 `README.md`나 로컬 규칙을 우선시
+- 전체 프로젝트 문맥이 필요 없는 경우, 해당 모듈 파일만 읽어 토큰 절약
+
+### 16. 리포지토리 절대 진실 원칙 (Chat is Volatile)
+- 채팅 내용은 휘발성이다. 모든 산출물은 파일로 저장되어야 한다.
+- "아까 말한 것"을 기억하려 하지 말고, 문서에 기록된 것을 신뢰하라.
+- 기능 완료의 기준(DoD) = 코드 동작 + 문서 최신화
+
+### 17. 가상 FGI(Focus Group Interview) 시뮬레이션
+- 구현 전 가상의 페르소나(기획자, 보안 담당자, 시니어 개발자)로 비판적 리뷰 수행
+- `<review>` 태그를 사용하여 예상되는 문제점을 스스로 지적하고 보완한 뒤 코딩 시작
+
+### 18. 문서 동기화 업데이트 원칙
+- 코드가 변경되면 관련된 문서(README, API Docs)도 반드시 동일한 커밋에서 수정
+- 문서와 코드의 불일치는 '버그'로 간주
+
+---
+
+## 규칙 적용 우선순위
+
+1. **안전성 (Security)**: 데이터 손실 방지, 시크릿 유출 방지 (`.env` 읽기 금지)
+2. **무결성 (Integrity)**: TDD 통과 및 문서와의 일치
+3. **간결성 (Simplicity)**: YAGNI 및 오버엔지니어링 방지
+4. **명확성 (Clarity)**: 가독성 높은 코드와 문서
+
+---
+
+## 금지 사항 요약
+
+| 항목 | 금지 사항 |
+|------|----------|
+| **자연어 처리** | **키워드 파싱, 정규식 라우팅, if-else 의도 분류** (LLM Tool Use만 허용) |
+| 기능 | 요청하지 않은 기능 추가, 미래를 대비한 코드 |
+| 코드 | 모킹 남용, 테스트용 print 방치, 하드코딩된 시크릿 |
+| 컨텍스트 | **파일 내용을 읽지 않고 추측하기(Guessing)** |
+| 프로세스 | **계획(`<plan>`) 및 테스트 없이 코드 작성 시작** |
+| 세션 | **긴 세션에서 컨텍스트 정리 없이 작업 지속 (Context Rot)** |
+| 소통 | "아까 말했듯이"라며 채팅 기억에 의존하기 |
+| 문서 | 코드는 수정했으나 문서는 방치하는 행위 |
