@@ -7,8 +7,12 @@ Why: Discord를 통해 사용자와 상호작용하는 인터페이스를 제공
 """
 
 import asyncio
+import atexit
 import logging
+import os
+import signal
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Optional
 
 import discord
@@ -29,6 +33,73 @@ MAX_MESSAGE_LENGTH = 2000
 # Why: 프론트엔드(데스크톱 앱)가 봇 토큰으로 메시지를 보내므로,
 # 봇 자신의 메시지로 인식되는 문제를 해결하기 위해 prefix로 구분
 DESKTOP_USER_PREFIX = "[DESKTOP_USER] "
+
+# PID 파일 경로
+# Why: 중복 실행 방지를 위해 현재 프로세스 ID를 파일에 저장
+PID_FILE = Path(__file__).parent / "angmini.pid"
+
+
+def kill_existing_processes() -> None:
+    """
+    기존 bot.py 프로세스를 모두 종료한다.
+
+    Why: 중복 실행 방지. bot.py 시작 시 자동으로 기존 프로세스 정리.
+    """
+    import subprocess
+
+    current_pid = os.getpid()
+
+    # PID 파일로 기존 프로세스 종료
+    if PID_FILE.exists():
+        try:
+            old_pid = int(PID_FILE.read_text().strip())
+            if old_pid != current_pid:
+                os.kill(old_pid, signal.SIGTERM)
+                logger.info(f"Killed existing process from PID file: {old_pid}")
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass
+        PID_FILE.unlink(missing_ok=True)
+
+    # pgrep으로 좀비 프로세스도 정리
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "bot.py"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            pids = result.stdout.strip().split("\n")
+            for pid_str in pids:
+                try:
+                    pid = int(pid_str)
+                    if pid != current_pid:
+                        os.kill(pid, signal.SIGTERM)
+                        logger.info(f"Killed zombie process: {pid}")
+                except (ValueError, ProcessLookupError, PermissionError):
+                    pass
+    except FileNotFoundError:
+        pass  # pgrep이 없는 환경
+
+
+def write_pid_file() -> None:
+    """
+    현재 프로세스 ID를 파일에 저장한다.
+
+    Why: 시작 스크립트에서 기존 프로세스를 종료할 때 사용.
+    """
+    PID_FILE.write_text(str(os.getpid()))
+    logger.info(f"PID file written: {PID_FILE} (PID: {os.getpid()})")
+
+
+def remove_pid_file() -> None:
+    """
+    PID 파일을 삭제한다.
+
+    Why: 정상 종료 시 PID 파일을 정리하여 다음 시작 시 혼란 방지.
+    """
+    if PID_FILE.exists():
+        PID_FILE.unlink()
+        logger.info(f"PID file removed: {PID_FILE}")
 
 
 def split_message(text: str, max_length: int = MAX_MESSAGE_LENGTH) -> list[str]:
@@ -168,6 +239,24 @@ class AngminiBot(commands.Bot):
 """
             await interaction.response.send_message(help_text)
 
+        @self.tree.command(name="kill", description="백엔드 서버를 종료합니다 (관리자용)")
+        async def kill_command(interaction: discord.Interaction):
+            """
+            원격으로 백엔드 서버를 종료한다.
+
+            Why: 관리자가 Discord에서 직접 서버를 종료할 수 있도록 함.
+            중복 실행 문제 해결이나 재시작 필요 시 사용.
+            """
+            await interaction.response.send_message(
+                "🛑 **서버 종료 중...**\n"
+                "앙미니 백엔드가 종료됩니다. 다시 시작하려면 `./start.sh`를 실행하세요."
+            )
+            logger.info(f"Kill command received from {interaction.user}. Shutting down...")
+
+            # 잠시 대기 후 종료 (응답이 전송될 시간 확보)
+            await asyncio.sleep(1)
+            await self.close()
+
     async def _send_response(
         self, interaction: discord.Interaction, response: str
     ) -> None:
@@ -296,6 +385,26 @@ async def main() -> None:
 
     logger.info("Starting Angmini Bot...")
 
+    # 기존 프로세스 종료 (중복 실행 방지)
+    kill_existing_processes()
+
+    # PID 파일 생성 및 종료 시 정리 등록
+    write_pid_file()
+    atexit.register(remove_pid_file)
+
+    bot = None
+
+    def shutdown_handler(signum, _frame):
+        """시그널 핸들러 - graceful shutdown."""
+        sig_name = signal.Signals(signum).name
+        logger.info(f"Received {sig_name}, shutting down gracefully...")
+        if bot and not bot.is_closed():
+            asyncio.create_task(bot.close())
+
+    # SIGTERM, SIGINT 핸들러 등록
+    signal.signal(signal.SIGTERM, shutdown_handler)
+    signal.signal(signal.SIGINT, shutdown_handler)
+
     try:
         bot = create_bot()
         cfg = config()
@@ -309,6 +418,10 @@ async def main() -> None:
     except Exception as e:
         logger.error(f"Bot error: {e}", exc_info=True)
         raise
+    finally:
+        # 종료 시 PID 파일 정리 (atexit가 호출 안 될 경우 대비)
+        remove_pid_file()
+        logger.info("Angmini Bot stopped.")
 
 
 if __name__ == "__main__":
