@@ -62,3 +62,14 @@ logs/
 
 # Claude Code 관련
 claudedocs/
+
+# Node.js
+node_modules/
+node_modules.nosync/
+
+# Tauri / Rust
+target/
+target.nosync/
+
+# iCloud .nosync 폴더들
+*.nosync/
