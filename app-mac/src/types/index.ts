@@ -22,6 +22,7 @@ export interface Schedule {
   startTime: string | null; // HH:MM
   endTime: string | null; // HH:MM
   location: string | null;
+  memo: string | null;
   category: ScheduleCategory;
   status: '대기' | '완료';
 }
@@ -34,6 +35,7 @@ export interface ScheduleFromServer {
   start_time: string | null;
   end_time: string | null;
   location: string | null;
+  memo: string | null;
   category: string;
   status: string;
 }

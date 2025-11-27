@@ -64,12 +64,16 @@ class Database:
                 start_time TEXT,
                 end_time TEXT,
                 location TEXT,
+                memo TEXT,
                 major_category TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT '예정',
                 created_at TEXT NOT NULL
             )
         """)
         self._conn.commit()
+
+        # 기존 테이블에 memo 컬럼이 없으면 추가 (마이그레이션)
+        self._migrate_add_memo_column()
 
     # ==================== CREATE ====================
 
@@ -88,14 +92,15 @@ class Database:
         cursor = self._conn.execute("""
             INSERT INTO schedules (
                 title, scheduled_date, start_time, end_time,
-                location, major_category, status, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                location, memo, major_category, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             schedule.title,
             schedule.scheduled_date.isoformat(),
             schedule.start_time.strftime("%H:%M") if schedule.start_time else None,
             schedule.end_time.strftime("%H:%M") if schedule.end_time else None,
             schedule.location,
+            schedule.memo,
             schedule.major_category,
             schedule.status,
             schedule.created_at.isoformat(),
@@ -168,6 +173,7 @@ class Database:
                 start_time = ?,
                 end_time = ?,
                 location = ?,
+                memo = ?,
                 major_category = ?,
                 status = ?
             WHERE id = ?
@@ -177,6 +183,7 @@ class Database:
             schedule.start_time.strftime("%H:%M") if schedule.start_time else None,
             schedule.end_time.strftime("%H:%M") if schedule.end_time else None,
             schedule.location,
+            schedule.memo,
             schedule.major_category,
             schedule.status,
             schedule.id,
@@ -253,6 +260,21 @@ class Database:
 
         return [self._row_to_schedule(row) for row in cursor.fetchall()]
 
+    # ==================== MIGRATION ====================
+
+    def _migrate_add_memo_column(self) -> None:
+        """
+        기존 테이블에 memo 컬럼이 없으면 추가
+
+        Why: 기존 데이터를 유지하면서 스키마를 확장하기 위함
+        """
+        cursor = self._conn.execute("PRAGMA table_info(schedules)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if "memo" not in columns:
+            self._conn.execute("ALTER TABLE schedules ADD COLUMN memo TEXT")
+            self._conn.commit()
+
     # ==================== HELPER ====================
 
     def _row_to_schedule(self, row: sqlite3.Row) -> Schedule:
@@ -279,6 +301,7 @@ class Database:
             start_time=start_time,
             end_time=end_time,
             location=row["location"],
+            memo=row["memo"],
             major_category=row["major_category"],
             status=row["status"],
             created_at=datetime.fromisoformat(row["created_at"]),

@@ -5,4 +5,5 @@ export { CalendarContainer } from './CalendarContainer';
 export { MonthCalendar } from './MonthCalendar';
 export { DaySchedule } from './DaySchedule';
 export { ScheduleBlock } from './ScheduleBlock';
+export { ScheduleDetail } from './ScheduleDetail';
 export * from './types';

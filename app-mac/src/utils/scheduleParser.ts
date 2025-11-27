@@ -98,6 +98,7 @@ export function convertServerSchedule(server: ScheduleFromServer): Schedule {
     startTime: server.start_time,
     endTime: server.end_time,
     location: server.location,
+    memo: server.memo,
     category,
     status,
   };

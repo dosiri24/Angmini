@@ -45,6 +45,10 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
                     "type": "string",
                     "description": "장소. 없으면 null."
                 },
+                "memo": {
+                    "type": "string",
+                    "description": "메모. 없으면 null."
+                },
                 "category": {
                     "type": "string",
                     "description": f"대분류 카테고리. 허용값: {VALID_CATEGORIES}. 기본값: 기타",
@@ -190,6 +194,7 @@ def add_schedule(
     start_time: str = None,
     end_time: str = None,
     location: str = None,
+    memo: str = None,
     category: str = "기타",
 ) -> Dict[str, Any]:
     """
@@ -205,6 +210,7 @@ def add_schedule(
         start_time: 시작 시간 (HH:MM 형식, 선택)
         end_time: 종료 시간 (HH:MM 형식, 선택)
         location: 장소 (선택)
+        memo: 메모 (선택)
         category: 대분류 카테고리 (기본: 기타)
 
     Returns:
@@ -230,6 +236,7 @@ def add_schedule(
             start_time=parsed_start_time,
             end_time=parsed_end_time,
             location=location,
+            memo=memo,
             major_category=category,
         )
         schedule.validate()
@@ -369,6 +376,7 @@ def get_all_schedules(
             "start_time": s.start_time.strftime("%H:%M") if s.start_time else None,
             "end_time": s.end_time.strftime("%H:%M") if s.end_time else None,
             "location": s.location,
+            "memo": s.memo,
             "category": s.major_category,
             "status": s.status,
         })

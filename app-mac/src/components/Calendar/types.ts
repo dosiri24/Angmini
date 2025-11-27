@@ -3,7 +3,7 @@
  * Why: 달력 뷰 상태 및 네비게이션 관련 타입 중앙 관리
  */
 
-export type CalendarView = 'month' | 'day';
+export type CalendarView = 'month' | 'day' | 'detail';
 
 export interface CalendarState {
   view: CalendarView;

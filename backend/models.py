@@ -36,6 +36,7 @@ class Schedule:
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     location: Optional[str] = None
+    memo: Optional[str] = None
     status: str = "예정"
     created_at: datetime = field(default_factory=datetime.now)
 
@@ -90,6 +91,7 @@ class Schedule:
             "start_time": self.start_time.strftime("%H:%M") if self.start_time else None,
             "end_time": self.end_time.strftime("%H:%M") if self.end_time else None,
             "location": self.location,
+            "memo": self.memo,
             "major_category": self.major_category,
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -135,6 +137,7 @@ class Schedule:
             start_time=start_time,
             end_time=end_time,
             location=data.get("location"),
+            memo=data.get("memo"),
             major_category=data["major_category"],
             status=data.get("status", "예정"),
             created_at=created_at,

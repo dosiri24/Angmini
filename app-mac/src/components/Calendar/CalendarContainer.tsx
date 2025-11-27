@@ -1,12 +1,13 @@
 /**
  * 달력 컨테이너 컴포넌트
- * Why: 월간/일간 뷰 전환 및 상태 관리
+ * Why: 월간/일간/상세 뷰 전환 및 상태 관리
  */
 import { useState } from 'react';
 import type { Schedule } from '../../types';
 import type { CalendarView } from './types';
 import { MonthCalendar } from './MonthCalendar';
 import { DaySchedule } from './DaySchedule';
+import { ScheduleDetail } from './ScheduleDetail';
 import './CalendarContainer.css';
 
 interface CalendarContainerProps {
@@ -27,6 +28,7 @@ export function CalendarContainer({
   const [view, setView] = useState<CalendarView>('month');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
 
   /** 월간 달력에서 날짜 클릭 → 일간 뷰로 전환 */
   const handleDateSelect = (date: Date) => {
@@ -44,28 +46,41 @@ export function CalendarContainer({
     setCurrentMonth(date);
   };
 
-  /** 일정 클릭 처리 */
+  /** 일정 클릭 → 상세 뷰로 전환 */
   const handleScheduleClick = (schedule: Schedule) => {
-    // TODO: 상세 정보 모달 또는 툴팁 표시
-    console.log('Schedule clicked:', schedule);
+    setSelectedSchedule(schedule);
+    setView('detail');
     onScheduleClick?.(schedule);
+  };
+
+  /** 상세 뷰에서 뒤로가기 → 일간 뷰로 복귀 */
+  const handleBackToDay = () => {
+    setSelectedSchedule(null);
+    setView('day');
   };
 
   return (
     <div className="calendar-container">
-      {view === 'month' ? (
+      {view === 'month' && (
         <MonthCalendar
           currentMonth={currentMonth}
           onMonthChange={handleMonthChange}
           onDateSelect={handleDateSelect}
           getDatesWithSchedules={getDatesWithSchedules}
         />
-      ) : (
+      )}
+      {view === 'day' && (
         <DaySchedule
           selectedDate={selectedDate}
           onBack={handleBackToMonth}
           onScheduleClick={handleScheduleClick}
           getSchedulesForDate={getSchedulesForDate}
+        />
+      )}
+      {view === 'detail' && selectedSchedule && (
+        <ScheduleDetail
+          schedule={selectedSchedule}
+          onBack={handleBackToDay}
         />
       )}
     </div>
