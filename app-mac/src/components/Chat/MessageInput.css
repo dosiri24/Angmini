@@ -1,36 +1,41 @@
-/* 메시지 입력 영역 */
+/**
+ * 메시지 입력 영역 스타일
+ * Why: 토스 스타일 깔끔한 입력 UI
+ */
+
+/* 메시지 입력 컨테이너 */
 .message-input {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 12px;
-  background: #1e1e3a;
-  border-top: 1px solid #2a2a4a;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-light);
 }
 
 .message-input textarea {
   flex: 1;
-  background: #2a2a4a;
-  border: 1px solid #3a3a5a;
-  border-radius: 16px;
-  padding: 10px 14px;
-  color: #e0e0e0;
-  font-size: 14px;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: var(--text-primary);
+  font-size: var(--font-body);
   font-family: inherit;
   resize: none;
   min-height: 40px;
   max-height: 100px;
   line-height: 1.4;
   outline: none;
-  transition: border-color 0.2s;
+  transition: var(--transition-fast);
 }
 
 .message-input textarea:focus {
-  border-color: #6366f1;
+  background: var(--bg-tertiary);
 }
 
 .message-input textarea::placeholder {
-  color: #666;
+  color: var(--text-tertiary);
 }
 
 .message-input textarea:disabled {
@@ -40,21 +45,22 @@
 
 /* 전송 버튼 */
 .send-button {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
   border: none;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  background: var(--accent-primary);
   color: white;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.2s, opacity 0.2s;
+  transition: var(--transition-fast);
   flex-shrink: 0;
 }
 
 .send-button:hover:not(:disabled) {
+  background: var(--accent-secondary);
   transform: scale(1.05);
 }
 
@@ -63,6 +69,6 @@
 }
 
 .send-button:disabled {
-  opacity: 0.4;
+  background: var(--border);
   cursor: not-allowed;
 }

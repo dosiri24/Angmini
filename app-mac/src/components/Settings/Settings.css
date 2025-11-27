@@ -1,9 +1,14 @@
 /**
  * 설정 화면 스타일
- * Why: 모달 형태의 설정 화면 UI
+ * Why: 토스 스타일의 깔끔하고 직관적인 설정 모달 UI
+ * Phase 5 - UI/UX 리뉴얼 (2025-11-27)
  */
 
-/* 오버레이 (배경 딤) */
+/* =========================
+   5.1 모달 기본 스타일
+   ========================= */
+
+/* 오버레이 (배경 딤 + blur) */
 .settings-overlay {
   position: fixed;
   top: 0;
@@ -11,11 +16,13 @@
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
+  animation: fadeIn var(--transition-slow);
 }
 
 @keyframes fadeIn {
@@ -29,13 +36,13 @@
 
 /* 모달 컨테이너 */
 .settings-modal {
-  background: #1a1a2e;
-  border-radius: 12px;
-  width: 320px;
+  background: #1A1A1A;
+  border-radius: 16px;
+  width: 340px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  animation: slideUp 0.2s ease;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: slideUp var(--transition-slow);
 }
 
 @keyframes slideUp {
@@ -54,13 +61,13 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #2a2a4a;
+  padding: 20px 24px;
+  border-bottom: 1px solid #252525;
 }
 
 .settings-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 600;
   color: #ffffff;
 }
@@ -68,12 +75,12 @@
 .close-btn {
   background: none;
   border: none;
-  color: #888;
+  color: #808080;
   font-size: 18px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  border-radius: 8px;
+  transition: all var(--transition-fast);
 }
 
 .close-btn:hover {
@@ -83,68 +90,83 @@
 
 /* 컨텐츠 영역 */
 .settings-content {
-  padding: 20px;
+  padding: 24px;
 }
 
-/* 상태 뱃지 */
+/* =========================
+   5.2 연결 상태 뱃지
+   ========================= */
+
 .status-badge {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
+  padding: 6px 14px;
+  border-radius: 14px;
+  font-size: 13px;
   font-weight: 500;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
+/* 연결됨 - 초록색 */
 .status-badge.configured {
-  background: rgba(76, 175, 80, 0.2);
-  color: #81c784;
+  background: rgba(52, 199, 89, 0.15);
+  color: #34C759;
 }
 
+/* 미설정 - 빨간색 */
 .status-badge.not-configured {
-  background: rgba(255, 152, 0, 0.2);
-  color: #ffb74d;
+  background: rgba(255, 59, 48, 0.15);
+  color: #FF3B30;
 }
 
-/* 입력 그룹 */
+/* 연결 중 (선택적 사용) */
+.status-badge.connecting {
+  background: rgba(255, 204, 0, 0.15);
+  color: #FFCC00;
+}
+
+/* =========================
+   5.5 입력 필드 스타일
+   ========================= */
+
 .input-group {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 
 .input-group label {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
-  color: #b0b0b0;
-  margin-bottom: 6px;
+  color: #ffffff;
+  margin-bottom: 8px;
 }
 
 .input-group input {
   width: 100%;
-  padding: 10px 12px;
-  background: #0f0f1a;
-  border: 1px solid #3a3a5a;
-  border-radius: 6px;
+  padding: 12px 14px;
+  background: #252525;
+  border: 1px solid #333333;
+  border-radius: 10px;
   color: #ffffff;
-  font-size: 13px;
+  font-size: 14px;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--transition-normal);
   box-sizing: border-box;
 }
 
 .input-group input:focus {
-  border-color: #6366f1;
+  border-color: #3182F6;
 }
 
 .input-group input::placeholder {
-  color: #666;
+  color: #666666;
 }
 
 .input-hint {
   display: block;
-  font-size: 11px;
-  color: #666;
-  margin-top: 4px;
+  font-size: 12px;
+  color: #888888;
+  margin-top: 6px;
+  line-height: 1.4;
 }
 
 /* 토큰 표시/숨김 토글 */
@@ -158,171 +180,100 @@
 }
 
 .toggle-visibility {
-  padding: 10px 12px;
-  background: #2a2a4a;
-  border: 1px solid #3a3a5a;
-  border-radius: 6px;
-  color: #b0b0b0;
-  font-size: 12px;
+  padding: 12px 14px;
+  background: #333333;
+  border: 1px solid #333333;
+  border-radius: 10px;
+  color: #A0A0A0;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .toggle-visibility:hover {
-  background: #3a3a5a;
+  background: #404040;
   color: #fff;
 }
 
-/* 액션 버튼 영역 */
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 20px;
-  border-top: 1px solid #2a2a4a;
-}
+/* =========================
+   5.3 섹션 구분 강화
+   ========================= */
 
-.btn-save,
-.btn-clear {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-save {
-  background: #6366f1;
-  border: none;
-  color: #fff;
-}
-
-.btn-save:hover:not(:disabled) {
-  background: #5457e5;
-}
-
-.btn-save:disabled {
-  background: #4a4a6a;
-  color: #888;
-  cursor: not-allowed;
-}
-
-.btn-clear {
-  background: transparent;
-  border: 1px solid #e53935;
-  color: #e53935;
-}
-
-.btn-clear:hover {
-  background: rgba(229, 57, 53, 0.1);
-}
-
-/* 도움말 */
-.settings-help {
-  padding: 0 20px 20px;
-}
-
-.settings-help details {
-  background: #0f0f1a;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.settings-help summary {
-  padding: 12px 16px;
-  font-size: 12px;
-  color: #b0b0b0;
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.15s ease;
-}
-
-.settings-help summary:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.settings-help ol {
-  margin: 0;
-  padding: 0 16px 16px 32px;
-  font-size: 12px;
-  color: #888;
-  line-height: 1.8;
-}
-
-.settings-help a {
-  color: #6366f1;
-  text-decoration: none;
-}
-
-.settings-help a:hover {
-  text-decoration: underline;
-}
-
-/* 설정 섹션 */
 .settings-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid #2a2a4a;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #252525;
 }
 
 .settings-section h3 {
-  margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #b0b0b0;
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #808080;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
 }
 
-/* 토글 옵션 행 */
+/* =========================
+   5.4 토글 스위치 개선
+   ========================= */
+
 .settings-toggle-option {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 10px 0;
 }
 
 .settings-toggle-option label {
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  flex: 1;
+  margin-right: 12px;
 }
 
 .settings-toggle-text {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: #ffffff;
 }
 
 .settings-toggle-hint {
-  font-size: 11px;
-  color: #666;
-  margin-top: 2px;
+  font-size: 12px;
+  color: #888888;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
-/* 설정용 토글 스위치 */
+/* 토글 스위치 - OFF: #333333, ON: #3182F6 */
 .settings-toggle-switch {
-  width: 44px;
-  height: 24px;
-  background: #3a3a5a;
+  width: 51px;
+  height: 31px;
+  background: #333333;
   border: none;
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 2px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background var(--transition-normal);
   position: relative;
+  flex-shrink: 0;
 }
 
 .settings-toggle-switch.on {
-  background: #6366f1;
+  background: #3182F6;
 }
 
+/* 노브 - 크기 27x27px, box-shadow 추가 */
 .settings-toggle-knob {
   display: block;
-  width: 20px;
-  height: 20px;
+  width: 27px;
+  height: 27px;
   background: #ffffff;
   border-radius: 50%;
-  transition: transform 0.2s ease;
+  transition: transform var(--transition-normal);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .settings-toggle-switch.on .settings-toggle-knob {
@@ -334,37 +285,135 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 10px 0;
 }
 
 .settings-action-info {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  margin-right: 12px;
 }
 
 .settings-action-text {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   color: #ffffff;
 }
 
 .settings-action-hint {
-  font-size: 11px;
-  color: #666;
-  margin-top: 2px;
+  font-size: 12px;
+  color: #888888;
+  margin-top: 4px;
 }
 
 /* 작은 위험 버튼 */
 .btn-danger-small {
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: transparent;
-  border: 1px solid #e53935;
-  border-radius: 6px;
-  color: #e53935;
-  font-size: 12px;
+  border: 1px solid #FF3B30;
+  border-radius: 8px;
+  color: #FF3B30;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .btn-danger-small:hover {
-  background: rgba(229, 57, 53, 0.1);
+  background: rgba(255, 59, 48, 0.1);
+}
+
+/* =========================
+   액션 버튼 영역
+   ========================= */
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px 24px;
+  border-top: 1px solid #252525;
+}
+
+.btn-save,
+.btn-clear {
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-save {
+  background: #3182F6;
+  border: none;
+  color: #fff;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #1B64DA;
+}
+
+.btn-save:disabled {
+  background: #333333;
+  color: #666666;
+  cursor: not-allowed;
+}
+
+.btn-clear {
+  background: transparent;
+  border: 1px solid #FF3B30;
+  color: #FF3B30;
+}
+
+.btn-clear:hover {
+  background: rgba(255, 59, 48, 0.1);
+}
+
+/* =========================
+   도움말 섹션
+   ========================= */
+
+.settings-help {
+  padding: 0 24px 24px;
+}
+
+.settings-help details {
+  background: #252525;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.settings-help summary {
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #A0A0A0;
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.settings-help summary:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.settings-help ol {
+  margin: 0;
+  padding: 0 16px 16px 32px;
+  font-size: 13px;
+  color: #888888;
+  line-height: 1.8;
+}
+
+.settings-help a {
+  color: #3182F6;
+  text-decoration: none;
+}
+
+.settings-help a:hover {
+  text-decoration: underline;
 }

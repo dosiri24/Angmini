@@ -1,24 +1,32 @@
-/* 토글 영역: 하단 고정 60px */
+/**
+ * 탭바 토글 영역 스타일
+ * Why: 토스 스타일 탭 네비게이션
+ */
+
+/* 토글 영역: 하단 고정 */
 .toggle-container {
   width: 100%;
   height: 60px;
-  background: #1a1a2e;
+  background: var(--bg-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
+  padding: var(--spacing-sm) var(--spacing-lg);
   flex-shrink: 0;
 }
 
-/* 스위치 트랙 (큰 직사각형) */
+/* 스위치 트랙 (컨테이너) */
 .toggle-switch {
   position: relative;
   width: 280px;
   height: 40px;
-  background: #2d2d44;
-  border-radius: 10px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
   cursor: pointer;
   overflow: hidden;
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: 4px;
 }
 
 /* 배경 라벨 */
@@ -28,10 +36,12 @@
   transform: translateY(-50%);
   width: 50%;
   text-align: center;
-  font-size: 13px;
-  color: #666;
+  font-size: var(--font-tab);
+  font-weight: 500;
+  color: #808080;
   pointer-events: none;
   z-index: 1;
+  transition: var(--transition-normal);
 }
 
 .toggle-label.left {
@@ -42,25 +52,37 @@
   right: 0;
 }
 
-/* 슬라이더 (작은 직사각형) */
+/* 활성화된 라벨 숨기기 */
+.toggle-slider:not(.right) ~ .toggle-label.left,
+.toggle-slider.right ~ .toggle-label.right {
+  opacity: 0;
+}
+
+/* 슬라이더 (활성 탭 인디케이터) */
 .toggle-slider {
   position: absolute;
   top: 4px;
   left: 4px;
   width: calc(50% - 4px);
   height: calc(100% - 8px);
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 8px;
+  background: var(--accent-primary);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: var(--font-tab);
+  font-weight: 500;
   color: white;
-  transition: left 0.25s ease;
+  transition: left var(--transition-normal);
   z-index: 2;
 }
 
 /* 슬라이더가 오른쪽으로 이동 */
 .toggle-slider.right {
-  left: calc(50% + 0px);
+  left: calc(50%);
+}
+
+/* 호버 효과 */
+.toggle-switch:hover .toggle-label {
+  color: var(--text-primary);
 }
