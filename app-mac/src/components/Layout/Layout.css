@@ -4,7 +4,7 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #16162a;
+  background: var(--bg-primary);
   overflow: hidden;
 }
 
@@ -12,7 +12,7 @@
 .content-area {
   flex: 1;
   overflow-y: auto;
-  background: #1a1a2e;
+  background: var(--bg-primary);
 }
 
 /* 플레이스홀더 (임시) */
@@ -37,41 +37,39 @@
 /* 설정 버튼 (우측 상단 고정) */
 .settings-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
   width: 32px;
   height: 32px;
-  background: rgba(26, 26, 46, 0.8);
-  border: 1px solid #3a3a5a;
-  border-radius: 6px;
-  color: #888;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 16px;
   cursor: pointer;
   z-index: 100;
-  transition: all 0.15s ease;
+  transition: var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .settings-btn:hover {
-  background: rgba(58, 58, 90, 0.9);
+  background: rgba(255, 255, 255, 0.15);
   color: #fff;
-  border-color: #5a5a7a;
 }
 
 /* 미설정 시 주의 표시 애니메이션 */
 .settings-btn.attention {
   animation: pulse 2s infinite;
-  color: #ffb74d;
-  border-color: rgba(255, 183, 77, 0.5);
+  color: var(--warning);
 }
 
 @keyframes pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 183, 77, 0.4);
+    box-shadow: 0 0 0 0 rgba(255, 204, 0, 0.4);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(255, 183, 77, 0);
+    box-shadow: 0 0 0 6px rgba(255, 204, 0, 0);
   }
 }

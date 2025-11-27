@@ -13,7 +13,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  transition: opacity 0.2s, transform 0.1s;
+  transition: opacity var(--transition-normal), transform var(--transition-fast);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 

@@ -180,47 +180,47 @@ app-mac/src/
 ## Phase 5: 설정 모달 개선
 
 ### 5.1 모달 기본 스타일
-- [ ] **IMPL**: 오버레이 rgba(0, 0, 0, 0.6) + blur(4px)
-- [ ] **IMPL**: 컨테이너 배경 #1A1A1A, radius: 16px
-- [ ] **IMPL**: max-width: 340px, padding: 24px
-- [ ] **IMPL**: 헤더 font-size: 18px, font-weight: 600
+- [x] **IMPL**: 오버레이 rgba(0, 0, 0, 0.6) + blur(4px)
+- [x] **IMPL**: 컨테이너 배경 #1A1A1A, radius: 16px
+- [x] **IMPL**: max-width: 340px, padding: 24px
+- [x] **IMPL**: 헤더 font-size: 18px, font-weight: 600
 
 ### 5.2 연결 상태 뱃지 개선
-- [ ] **IMPL**: 연결됨 - 배경 rgba(52, 199, 89, 0.15), 텍스트 #34C759
-- [ ] **IMPL**: 연결 안됨 - 배경 rgba(255, 59, 48, 0.15), 텍스트 #FF3B30
-- [ ] **IMPL**: 연결 중 - 배경 rgba(255, 204, 0, 0.15), 텍스트 #FFCC00
+- [x] **IMPL**: 연결됨 - 배경 rgba(52, 199, 89, 0.15), 텍스트 #34C759
+- [x] **IMPL**: 연결 안됨 - 배경 rgba(255, 59, 48, 0.15), 텍스트 #FF3B30
+- [x] **IMPL**: 연결 중 - 배경 rgba(255, 204, 0, 0.15), 텍스트 #FFCC00
 
 ### 5.3 섹션 구분 강화
-- [ ] **IMPL**: 섹션 간격 margin-top: 28px, padding-top: 20px
-- [ ] **IMPL**: border-top: 1px solid #252525
-- [ ] **IMPL**: 섹션 타이틀 font-size: 12px, uppercase, letter-spacing: 0.8px
+- [x] **IMPL**: 섹션 간격 margin-top: 28px, padding-top: 20px
+- [x] **IMPL**: border-top: 1px solid #252525
+- [x] **IMPL**: 섹션 타이틀 font-size: 12px, uppercase, letter-spacing: 0.8px
 
 ### 5.4 토글 스위치 개선
-- [ ] **IMPL**: OFF 상태 배경 #333333 (흰색 → 회색)
-- [ ] **IMPL**: ON 상태 배경 #3182F6
-- [ ] **IMPL**: 노브 크기: 27x27px, box-shadow 추가
-- [ ] **IMPL**: transition: 0.2s ease
+- [x] **IMPL**: OFF 상태 배경 #333333 (흰색 → 회색)
+- [x] **IMPL**: ON 상태 배경 #3182F6
+- [x] **IMPL**: 노브 크기: 27x27px, box-shadow 추가
+- [x] **IMPL**: transition: 0.2s ease
 
 ### 5.5 입력 필드 스타일
-- [ ] **IMPL**: 라벨 font-size: 14px, font-weight: 500
-- [ ] **IMPL**: 설명 텍스트 color: #888888 (기존보다 밝게)
-- [ ] **IMPL**: 필드 배경 #252525, border: 1px solid #333333
-- [ ] **IMPL**: focus 시 border-color: #3182F6
+- [x] **IMPL**: 라벨 font-size: 14px, font-weight: 500
+- [x] **IMPL**: 설명 텍스트 color: #888888 (기존보다 밝게)
+- [x] **IMPL**: 필드 배경 #252525, border: 1px solid #333333
+- [x] **IMPL**: focus 시 border-color: #3182F6
 
 ---
 
 ## Phase 6: 애니메이션 & 트랜지션 통일
 
 ### 6.1 트랜지션 변수 정의
-- [ ] **IMPL**: --transition-fast: 0.15s ease
-- [ ] **IMPL**: --transition-normal: 0.2s ease
-- [ ] **IMPL**: --transition-slow: 0.3s ease
+- [x] **IMPL**: --transition-fast: 0.15s ease
+- [x] **IMPL**: --transition-normal: 0.2s ease
+- [x] **IMPL**: --transition-slow: 0.3s ease
 
 ### 6.2 적용 대상 정리
-- [ ] **IMPL**: 버튼 호버/클릭 → fast
-- [ ] **IMPL**: 탭 전환 → normal
-- [ ] **IMPL**: 모달 열기/닫기 → slow
-- [ ] **IMPL**: 메시지 등장 → normal
+- [x] **IMPL**: 버튼 호버/클릭 → fast
+- [x] **IMPL**: 탭 전환 → normal
+- [x] **IMPL**: 모달 열기/닫기 → slow
+- [x] **IMPL**: 메시지 등장 → normal
 
 ---
 
@@ -228,12 +228,12 @@ app-mac/src/
 
 | Phase | 상태 | 시작 | 완료 |
 |-------|------|------|------|
-| 1. 색상 & 배경 | ⏳ 대기 | - | - |
-| 2. 채팅 UI | ⏳ 대기 | - | - |
-| 3. 탭바 & 네비게이션 | ⏳ 대기 | - | - |
-| 4. 달력 UI | ⏳ 대기 | - | - |
-| 5. 설정 모달 | ⏳ 대기 | - | - |
-| 6. 애니메이션 | ⏳ 대기 | - | - |
+| 1. 색상 & 배경 | ✅ 완료 | 2025-11-27 17:30 | 2025-11-27 17:33 |
+| 2. 채팅 UI | ✅ 완료 | 2025-11-27 17:33 | 2025-11-27 17:35 |
+| 3. 탭바 & 네비게이션 | ✅ 완료 | 2025-11-27 17:35 | 2025-11-27 17:36 |
+| 4. 달력 UI | ✅ 완료 | 2025-11-27 17:37 | 2025-11-27 17:38 |
+| 5. 설정 모달 | ✅ 완료 | 2025-11-27 18:50 | 2025-11-27 18:52 |
+| 6. 애니메이션 | ✅ 완료 | 2025-11-27 18:52 | 2025-11-27 18:55 |
 
 ---
 

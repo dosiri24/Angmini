@@ -1,9 +1,14 @@
+/**
+ * 메시지 목록 영역 스타일
+ * Why: 채팅 메시지 리스트 컨테이너
+ */
+
 /* 메시지 목록 영역 */
 .message-list {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: var(--spacing-md);
   overflow-y: auto;
 }
 
@@ -11,17 +16,17 @@
 .message-list-empty {
   justify-content: center;
   align-items: center;
-  color: #666;
+  color: var(--text-tertiary);
   text-align: center;
 }
 
 .message-list-empty p {
-  margin: 4px 0;
+  margin: var(--spacing-xs) 0;
 }
 
 .message-list-empty .hint {
-  font-size: 12px;
-  color: #444;
+  font-size: var(--font-caption);
+  color: var(--text-tertiary);
 }
 
 /* 스크롤바 스타일링 */
@@ -34,10 +39,10 @@
 }
 
 .message-list::-webkit-scrollbar-thumb {
-  background: #3a3a5a;
+  background: var(--border);
   border-radius: 3px;
 }
 
 .message-list::-webkit-scrollbar-thumb:hover {
-  background: #4a4a6a;
+  background: var(--text-tertiary);
 }

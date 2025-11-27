@@ -1,13 +1,14 @@
 /**
  * 월간 달력 스타일
+ * Why: 토스 스타일 월간 캘린더
  */
 
 .month-calendar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 12px;
-  background: #1a1a1a;
+  padding: var(--spacing-md);
+  background: var(--bg-primary);
 }
 
 /* 헤더 */
@@ -15,30 +16,30 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 4px;
-  margin-bottom: 12px;
+  padding: var(--spacing-sm) var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
 }
 
 .current-month {
   font-size: 16px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .nav-btn {
   background: transparent;
   border: none;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 20px;
-  padding: 4px 12px;
+  padding: var(--spacing-xs) var(--spacing-md);
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: var(--spacing-xs);
+  transition: var(--transition-fast);
 }
 
 .nav-btn:hover {
-  background: #333;
-  color: #fff;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 /* 요일 헤더 */
@@ -46,23 +47,23 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 2px;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-sm);
 }
 
 .weekday {
   text-align: center;
   font-size: 12px;
   font-weight: 500;
-  color: #666;
-  padding: 4px 0;
+  color: var(--text-tertiary);
+  padding: var(--spacing-xs) 0;
 }
 
 .weekday.sunday {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .weekday.saturday {
-  color: #3b82f6;
+  color: var(--accent-primary);
 }
 
 /* 달력 그리드 */
@@ -79,35 +80,36 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 4px 2px;
-  border-radius: 4px;
+  padding: var(--spacing-xs) 2px;
+  border-radius: var(--spacing-xs);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: var(--transition-fast);
   min-height: 36px;
 }
 
 .calendar-cell:not(.empty):hover {
-  background: #333;
+  background: var(--bg-tertiary);
 }
 
 .calendar-cell.empty {
   cursor: default;
 }
 
+/* 오늘 날짜 - 단색 파란색 */
 .calendar-cell.today {
-  background: #3b82f6;
+  background: var(--accent-primary);
 }
 
 .calendar-cell.today:hover {
-  background: #2563eb;
+  background: var(--accent-secondary);
 }
 
 .calendar-cell.sunday .day-number {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .calendar-cell.saturday .day-number {
-  color: #3b82f6;
+  color: var(--accent-primary);
 }
 
 .calendar-cell.today .day-number {
@@ -117,15 +119,15 @@
 .day-number {
   font-size: 13px;
   font-weight: 500;
-  color: #fff;
+  color: var(--text-primary);
 }
 
-/* 일정 표시 점 */
+/* 일정 표시 점 - 액센트 색상 통일 */
 .schedule-dot {
   width: 5px;
   height: 5px;
-  background: #22c55e;
-  border-radius: 50%;
+  background: var(--accent-primary);
+  border-radius: var(--radius-full);
   margin-top: 2px;
 }
 

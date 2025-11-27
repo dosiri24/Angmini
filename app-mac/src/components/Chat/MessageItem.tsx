@@ -18,9 +18,13 @@ export function MessageItem({ message }: MessageItemProps) {
   };
 
   return (
-    <div className={`message-item message-${message.type}`}>
-      <div className="message-content">{message.content}</div>
-      <div className="message-time">{formatTime(message.timestamp)}</div>
+    <div className={`message-wrapper ${message.type}`}>
+      <div className={`message-item message-${message.type}`}>
+        <div className="message-content">{message.content}</div>
+      </div>
+      {message.type !== 'system' && (
+        <div className="message-time">{formatTime(message.timestamp)}</div>
+      )}
     </div>
   );
 }
