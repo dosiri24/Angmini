@@ -37,3 +37,27 @@ export interface ScheduleFromServer {
   category: string;
   status: string;
 }
+
+// ============================================================
+// 동기화 관련 타입
+// ============================================================
+
+// 동기화 액션 타입
+export type SyncAction = 'add' | 'update' | 'delete' | 'full_sync';
+
+// 단일 일정 변경 이벤트
+export interface ScheduleSyncEvent {
+  action: 'add' | 'update' | 'delete';
+  schedule: ScheduleFromServer;
+  sync_timestamp: string;
+}
+
+// 전체 동기화 이벤트
+export interface ScheduleFullSyncEvent {
+  action: 'full_sync';
+  schedules: ScheduleFromServer[];
+  sync_timestamp: string;
+}
+
+// 동기화 이벤트 (union type)
+export type SyncEvent = ScheduleSyncEvent | ScheduleFullSyncEvent;

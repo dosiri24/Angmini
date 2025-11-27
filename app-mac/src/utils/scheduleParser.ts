@@ -1,9 +1,17 @@
 /**
  * 봇 응답에서 일정 데이터를 추출하는 파싱 유틸리티
  * Why: 봇 응답의 [SCHEDULE_DATA]...[/SCHEDULE_DATA] 마커에서 JSON 배열 추출
+ *      [SCHEDULE_SYNC]...[/SCHEDULE_SYNC] 마커에서 동기화 이벤트 추출
  * Note: 자연어 키워드 파싱이 아닌, 구조화된 마커 기반 추출 (CLAUDE.md 준수)
  */
-import type { Schedule, ScheduleFromServer, ScheduleCategory } from '../types';
+import type {
+  Schedule,
+  ScheduleFromServer,
+  ScheduleCategory,
+  SyncEvent,
+  ScheduleSyncEvent,
+  ScheduleFullSyncEvent,
+} from '../types';
 import logger from './logger';
 
 const MODULE = 'scheduleParser';
@@ -11,6 +19,8 @@ const MODULE = 'scheduleParser';
 // 마커 정의
 const SCHEDULE_DATA_START = '[SCHEDULE_DATA]';
 const SCHEDULE_DATA_END = '[/SCHEDULE_DATA]';
+const SCHEDULE_SYNC_START = '[SCHEDULE_SYNC]';
+const SCHEDULE_SYNC_END = '[/SCHEDULE_SYNC]';
 
 // 유효한 카테고리 목록
 const VALID_CATEGORIES: ScheduleCategory[] = ['학업', '약속', '개인', '업무', '루틴', '기타'];
@@ -72,7 +82,7 @@ export function parseScheduleData(content: string): Schedule[] {
 /**
  * 서버 형식(snake_case) → 클라이언트 형식(camelCase) 변환
  */
-function convertServerSchedule(server: ScheduleFromServer): Schedule {
+export function convertServerSchedule(server: ScheduleFromServer): Schedule {
   // 카테고리 검증 및 기본값 처리
   const category = VALID_CATEGORIES.includes(server.category as ScheduleCategory)
     ? (server.category as ScheduleCategory)
@@ -110,4 +120,126 @@ export function stripScheduleDataMarker(content: string): string {
   const after = content.slice(endIdx).trimStart();
 
   return (before + (after ? '\n' + after : '')).trim();
+}
+
+// ============================================================
+// 동기화 이벤트 파싱 (SCHEDULE_SYNC 마커)
+// ============================================================
+
+/**
+ * 봇 응답에서 동기화 이벤트 마커가 있는지 확인
+ */
+export function hasSyncEvent(content: string): boolean {
+  return content.includes(SCHEDULE_SYNC_START) && content.includes(SCHEDULE_SYNC_END);
+}
+
+/**
+ * 봇 응답에서 동기화 이벤트를 추출
+ * @param content 봇 응답 전체 문자열
+ * @returns SyncEvent 또는 null
+ */
+export function parseSyncEvent(content: string): SyncEvent | null {
+  logger.debug(MODULE, 'parseSyncEvent called', { contentLength: content.length });
+
+  if (!hasSyncEvent(content)) {
+    logger.debug(MODULE, 'No sync event markers found');
+    return null;
+  }
+
+  try {
+    // 마커 사이의 JSON 문자열 추출
+    const startIdx = content.indexOf(SCHEDULE_SYNC_START) + SCHEDULE_SYNC_START.length;
+    const endIdx = content.indexOf(SCHEDULE_SYNC_END);
+
+    if (startIdx >= endIdx) {
+      logger.warn(MODULE, 'Invalid sync marker positions', { startIdx, endIdx });
+      return null;
+    }
+
+    const jsonStr = content.slice(startIdx, endIdx).trim();
+    logger.debug(MODULE, 'Extracted sync JSON string', { jsonStr: jsonStr.slice(0, 100) });
+
+    // JSON 파싱
+    const rawEvent = JSON.parse(jsonStr);
+
+    // action 필드 검증
+    if (!rawEvent.action) {
+      logger.warn(MODULE, 'Sync event missing action field');
+      return null;
+    }
+
+    // action 타입에 따라 처리
+    if (rawEvent.action === 'full_sync') {
+      // 전체 동기화
+      if (!Array.isArray(rawEvent.schedules)) {
+        logger.warn(MODULE, 'Full sync event missing schedules array');
+        return null;
+      }
+      const event: ScheduleFullSyncEvent = {
+        action: 'full_sync',
+        schedules: rawEvent.schedules,
+        sync_timestamp: rawEvent.sync_timestamp || new Date().toISOString(),
+      };
+      logger.info(MODULE, 'Parsed full sync event', { count: event.schedules.length });
+      return event;
+    } else {
+      // 단일 일정 변경 (add, update, delete)
+      if (!rawEvent.schedule) {
+        logger.warn(MODULE, 'Sync event missing schedule field');
+        return null;
+      }
+      const event: ScheduleSyncEvent = {
+        action: rawEvent.action as 'add' | 'update' | 'delete',
+        schedule: rawEvent.schedule,
+        sync_timestamp: rawEvent.sync_timestamp || new Date().toISOString(),
+      };
+      logger.info(MODULE, 'Parsed sync event', { action: event.action, id: event.schedule.id });
+      return event;
+    }
+  } catch (error) {
+    logger.error(MODULE, 'Failed to parse sync event', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * 동기화 이벤트에서 Schedule 배열로 변환 (클라이언트 형식)
+ */
+export function convertSyncEventToSchedules(event: SyncEvent): Schedule[] {
+  if (event.action === 'full_sync') {
+    return event.schedules.map(convertServerSchedule);
+  } else if (event.action === 'delete') {
+    // delete의 경우 빈 배열 반환 (삭제 처리는 별도)
+    return [];
+  } else {
+    return [convertServerSchedule(event.schedule)];
+  }
+}
+
+/**
+ * 봇 응답에서 SCHEDULE_SYNC 마커를 제거하고 자연어 부분만 반환
+ */
+export function stripSyncEventMarker(content: string): string {
+  if (!hasSyncEvent(content)) {
+    return content;
+  }
+
+  const startIdx = content.indexOf(SCHEDULE_SYNC_START);
+  const endIdx = content.indexOf(SCHEDULE_SYNC_END) + SCHEDULE_SYNC_END.length;
+
+  const before = content.slice(0, startIdx).trimEnd();
+  const after = content.slice(endIdx).trimStart();
+
+  return (before + (after ? '\n' + after : '')).trim();
+}
+
+/**
+ * 모든 마커를 제거 (SCHEDULE_DATA + SCHEDULE_SYNC)
+ */
+export function stripAllMarkers(content: string): string {
+  let result = stripScheduleDataMarker(content);
+  result = stripSyncEventMarker(result);
+  return result;
 }

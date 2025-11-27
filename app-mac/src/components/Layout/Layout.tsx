@@ -2,13 +2,14 @@
  * 3단 레이아웃 컴포넌트
  * Why: 캐릭터(상단) / 컨텐츠(중앙) / 토글(하단) 구조
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ContentMode } from '../../types';
 import { useCharacter } from '../../hooks/useCharacter';
 import { useMessages } from '../../hooks/useMessages';
 import { useDiscord } from '../../hooks/useDiscord';
 import { useSchedules } from '../../hooks/useSchedules';
-import { stripScheduleDataMarker } from '../../utils/scheduleParser';
+import { useAppSettings } from '../../hooks/useAppSettings';
+import { stripAllMarkers, hasSyncEvent } from '../../utils/scheduleParser';
 import { Character } from '../Character/Character';
 import { ChatContainer } from '../Chat';
 import { CalendarContainer } from '../Calendar';
@@ -16,6 +17,9 @@ import { Toggle } from '../Toggle/Toggle';
 import { Settings } from '../Settings';
 import logger from '../../utils/logger';
 import './Layout.css';
+
+// 자동 동기화 주기 (30분)
+const AUTO_SYNC_INTERVAL = 30 * 60 * 1000;
 
 const MODULE = 'Layout';
 
@@ -25,15 +29,53 @@ export function Layout() {
   const [mode, setMode] = useState<ContentMode>('chat');
   const [showSettings, setShowSettings] = useState(false);
   const character = useCharacter();
-  const { messages, addUserMessage, addBotMessage, addSystemMessage } = useMessages();
+  const { messages, addUserMessage, addBotMessage, addSystemMessage, clearMessages } = useMessages();
   const discord = useDiscord();
   const schedules = useSchedules();
+  const appSettings = useAppSettings();
+
+  // 자동 동기화 타이머 ref
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 초기 동기화 완료 여부
+  const initialSyncDoneRef = useRef(false);
 
   logger.debug(MODULE, 'Discord state', {
     isConfigured: discord.isConfigured,
     isLoading: discord.isLoading,
     error: discord.error
   });
+
+  // 자동 동기화 타이머 리셋 (30분 주기)
+  const resetSyncTimer = useCallback(() => {
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = setTimeout(() => {
+      logger.info(MODULE, 'Auto sync timer triggered (30min)');
+      discord.sendBackgroundSync();
+      resetSyncTimer(); // 다음 주기 설정
+    }, AUTO_SYNC_INTERVAL);
+    logger.debug(MODULE, 'Sync timer reset');
+  }, [discord]);
+
+  // 앱 시작 시 초기 동기화 (Discord 설정 완료 후)
+  useEffect(() => {
+    if (discord.isConfigured && !initialSyncDoneRef.current) {
+      logger.info(MODULE, 'Initial sync on app startup');
+      initialSyncDoneRef.current = true;
+      // 약간의 딜레이 후 동기화 (폴링 초기화 대기)
+      setTimeout(() => {
+        discord.sendBackgroundSync();
+        resetSyncTimer();
+      }, 2000);
+    }
+
+    return () => {
+      if (syncTimerRef.current) {
+        clearTimeout(syncTimerRef.current);
+      }
+    };
+  }, [discord.isConfigured, discord, resetSyncTimer]);
 
   const handleModeChange = (newMode: ContentMode) => {
     logger.info(MODULE, 'Mode changed', { from: mode, to: newMode });
@@ -47,14 +89,25 @@ export function Layout() {
     discord.onBotMessage((content) => {
       logger.info(MODULE, 'Bot message received in Layout', { contentLength: content.length });
 
-      // 일정 데이터 추출 시도
-      const hasScheduleData = schedules.processMessage(content);
-      logger.debug(MODULE, 'Schedule data extraction', { hasScheduleData });
+      // 일정 데이터/동기화 이벤트 추출 시도
+      const hasScheduleProcessed = schedules.processMessage(content);
+      logger.debug(MODULE, 'Schedule data extraction', { hasScheduleProcessed });
 
-      // 채팅에는 마커 제거한 텍스트만 표시
-      const displayContent = stripScheduleDataMarker(content);
-      addBotMessage(displayContent);
-      character.onMessageReceive();
+      // 마커 제거 후 자연어 부분만 추출
+      const displayContent = stripAllMarkers(content).trim();
+
+      // 백그라운드 동기화 응답은 채팅에 표시하지 않음
+      // Why: 순수 동기화 응답 ([SCHEDULE_SYNC]만 포함)은 자연어가 없으므로 채팅 불필요
+      if (!displayContent && hasSyncEvent(content)) {
+        logger.info(MODULE, 'Background sync response received, not displaying in chat');
+        return;
+      }
+
+      // 자연어 응답이 있으면 채팅에 표시
+      if (displayContent) {
+        addBotMessage(displayContent);
+        character.onMessageReceive();
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 콜백은 최초 1회만 등록, 내부에서 최신 함수 참조
@@ -87,6 +140,15 @@ export function Layout() {
         logger.error(MODULE, 'Message send failed', { error: discord.error });
         addSystemMessage(`전송 실패: ${discord.error}`);
         character.onMessageReceive(); // 에러 시에도 상태 복귀
+      } else {
+        // 메시지 전송 성공 시 백그라운드 동기화 및 타이머 리셋
+        // Why: 일정 추가/수정 요청 후 자동으로 캘린더 갱신
+        logger.info(MODULE, 'Triggering background sync after message send');
+        // 봇 응답 처리 후 동기화 요청 (약간의 딜레이)
+        setTimeout(() => {
+          discord.sendBackgroundSync();
+        }, 3000);
+        resetSyncTimer();
       }
     } else {
       logger.info(MODULE, 'Discord not configured, using test mode');
@@ -101,7 +163,7 @@ export function Layout() {
   return (
     <div className="layout">
       {/* 상단: 캐릭터 영역 */}
-      <Character state={character.state} />
+      <Character state={character.state} useAnimatedCharacter={appSettings.useAnimatedCharacter} />
 
       {/* 설정 버튼 (우측 상단) */}
       <button
@@ -139,6 +201,9 @@ export function Layout() {
           onSave={discord.configure}
           onClear={discord.clearConfig}
           onClose={() => setShowSettings(false)}
+          useAnimatedCharacter={appSettings.useAnimatedCharacter}
+          onToggleAnimatedCharacter={appSettings.toggleAnimatedCharacter}
+          onClearChat={clearMessages}
         />
       )}
     </div>

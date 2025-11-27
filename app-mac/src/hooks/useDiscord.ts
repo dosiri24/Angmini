@@ -17,6 +17,10 @@ const POLL_INTERVAL = 1500; // 1.5초 간격 폴링
 // 백엔드는 이 prefix가 있으면 처리하고, 없으면 자신의 응답으로 무시
 const USER_MESSAGE_PREFIX = '[DESKTOP_USER] ';
 
+// 백그라운드 동기화 요청 prefix
+// Why: LLM이 이 prefix를 인식하면 자연어 응답 없이 바로 동기화 처리
+const BACKGROUND_SYNC_PREFIX = '[BACKGROUND_SYNC]';
+
 // 환경변수에서 기본값 로드 (백엔드와 동일한 변수명 사용)
 const ENV_CONFIG = {
   botToken: import.meta.env.DISCORD_BOT_TOKEN || '',
@@ -52,6 +56,7 @@ interface UseDiscordReturn {
   isLoading: boolean;
   error: string | null;
   sendMessage: (content: string) => Promise<boolean>;
+  sendBackgroundSync: () => Promise<boolean>;
   onBotMessage: (callback: (content: string) => void) => void;
   configure: (config: DiscordConfig) => void;
   clearConfig: () => void;
@@ -183,6 +188,58 @@ export function useDiscord(): UseDiscordReturn {
       } finally {
         setIsLoading(false);
         logger.debug(MODULE, 'sendMessage completed');
+      }
+    },
+    [config]
+  );
+
+  // 백그라운드 동기화 요청 전송
+  // Why: 채팅에 표시하지 않고 조용히 동기화 수행
+  const sendBackgroundSync = useCallback(
+    async (): Promise<boolean> => {
+      logger.info(MODULE, 'sendBackgroundSync() called');
+
+      if (!config) {
+        logger.warn(MODULE, 'sendBackgroundSync skipped: no config');
+        return false;
+      }
+
+      const url = `${DISCORD_API_BASE}/channels/${config.channelId}/messages`;
+
+      try {
+        // BACKGROUND_SYNC prefix로 백엔드에 동기화 요청
+        // USER_MESSAGE_PREFIX도 추가하여 백엔드가 처리하도록 함
+        const syncMessage = `${USER_MESSAGE_PREFIX}${BACKGROUND_SYNC_PREFIX}`;
+        logger.debug(MODULE, 'Sending background sync request');
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bot ${config.botToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ content: syncMessage }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          logger.error(MODULE, 'Background sync request failed', {
+            status: response.status,
+            body: errorText
+          });
+          return false;
+        }
+
+        const responseData = await response.json();
+        // 동기화 요청 메시지도 sentMessageIds에 추가 (채팅에 표시 방지)
+        sentMessageIdsRef.current.add(responseData.id);
+        logger.info(MODULE, 'Background sync request sent', { messageId: responseData.id });
+        return true;
+      } catch (err) {
+        logger.error(MODULE, 'sendBackgroundSync exception', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return false;
       }
     },
     [config]
@@ -359,6 +416,7 @@ export function useDiscord(): UseDiscordReturn {
     isLoading,
     error,
     sendMessage,
+    sendBackgroundSync,
     onBotMessage,
     configure,
     clearConfig,

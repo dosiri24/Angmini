@@ -11,9 +11,22 @@ interface SettingsProps {
   onSave: (config: { botToken: string; channelId: string; botUserId: string }) => void;
   onClear: () => void;
   onClose: () => void;
+  // 앱 설정 props
+  useAnimatedCharacter: boolean;
+  onToggleAnimatedCharacter: () => void;
+  // 채팅 초기화
+  onClearChat: () => void;
 }
 
-export function Settings({ isConfigured, onSave, onClear, onClose }: SettingsProps) {
+export function Settings({
+  isConfigured,
+  onSave,
+  onClear,
+  onClose,
+  useAnimatedCharacter,
+  onToggleAnimatedCharacter,
+  onClearChat,
+}: SettingsProps) {
   const [botToken, setBotToken] = useState('');
   const [channelId, setChannelId] = useState('');
   const [botUserId, setBotUserId] = useState('');
@@ -62,6 +75,12 @@ export function Settings({ isConfigured, onSave, onClear, onClose }: SettingsPro
       setBotUserId('');
     }
   }, [onClear]);
+
+  // 채팅 초기화 처리
+  const handleClearChat = useCallback(() => {
+    onClearChat();
+    onClose(); // 초기화 후 설정 모달 닫기
+  }, [onClearChat, onClose]);
 
   // 유효성 검사
   const isValid = botToken.trim() && channelId.trim() && botUserId.trim();
@@ -147,6 +166,41 @@ export function Settings({ isConfigured, onSave, onClear, onClose }: SettingsPro
                 aria-pressed={windowSettings.alwaysOnTop}
               >
                 <span className="settings-toggle-knob" />
+              </button>
+            </div>
+          </div>
+
+          {/* 표시 설정 섹션 */}
+          <div className="settings-section">
+            <h3>표시 설정</h3>
+            <div className="settings-toggle-option">
+              <label htmlFor="animatedCharacter">
+                <span className="settings-toggle-text">애니메이션 캐릭터</span>
+                <span className="settings-toggle-hint">
+                  {useAnimatedCharacter ? '캐릭터 이미지가 표시됩니다' : '이모지와 텍스트로 표시됩니다'}
+                </span>
+              </label>
+              <button
+                id="animatedCharacter"
+                className={`settings-toggle-switch ${useAnimatedCharacter ? 'on' : ''}`}
+                onClick={onToggleAnimatedCharacter}
+                aria-pressed={useAnimatedCharacter}
+              >
+                <span className="settings-toggle-knob" />
+              </button>
+            </div>
+          </div>
+
+          {/* 데이터 관리 섹션 */}
+          <div className="settings-section">
+            <h3>데이터 관리</h3>
+            <div className="settings-action-row">
+              <div className="settings-action-info">
+                <span className="settings-action-text">채팅 내역 초기화</span>
+                <span className="settings-action-hint">모든 대화 기록을 삭제합니다</span>
+              </div>
+              <button type="button" className="btn-danger-small" onClick={handleClearChat}>
+                초기화
               </button>
             </div>
           </div>

@@ -328,3 +328,43 @@
 .settings-toggle-switch.on .settings-toggle-knob {
   transform: translateX(20px);
 }
+
+/* 액션 행 (버튼이 있는 설정 행) */
+.settings-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.settings-action-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-action-text {
+  font-size: 13px;
+  color: #ffffff;
+}
+
+.settings-action-hint {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+/* 작은 위험 버튼 */
+.btn-danger-small {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #e53935;
+  border-radius: 6px;
+  color: #e53935;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger-small:hover {
+  background: rgba(229, 57, 53, 0.1);
+}

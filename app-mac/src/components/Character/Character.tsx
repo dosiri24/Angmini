@@ -9,6 +9,7 @@ import './Character.css';
 
 interface CharacterProps {
   state: CharacterState;
+  useAnimatedCharacter: boolean;
 }
 
 // 상태별 이미지 경로 (public 폴더 기준)
@@ -27,17 +28,20 @@ const stateLabels: Record<CharacterState, string> = {
   looking_down: '👀 달력 보는 중',
 };
 
-export function Character({ state }: CharacterProps) {
+export function Character({ state, useAnimatedCharacter }: CharacterProps) {
   const [imageError, setImageError] = useState(false);
 
   const handleImageError = () => {
     setImageError(true);
   };
 
+  // 애니메이션 캐릭터 비활성화 또는 이미지 로드 실패 시 이모지+텍스트 표시
+  const showPlaceholder = !useAnimatedCharacter || imageError;
+
   return (
     <div className="character-container">
       <div className="character-image-wrapper">
-        {!imageError ? (
+        {!showPlaceholder ? (
           <img
             src={stateImages[state]}
             alt={stateLabels[state]}

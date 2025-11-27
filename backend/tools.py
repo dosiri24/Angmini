@@ -103,6 +103,24 @@ TOOL_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             },
             "required": ["date", "time", "new_location"]
         }
+    },
+    "get_all_schedules": {
+        "name": "get_all_schedules",
+        "description": "모든 일정을 조회합니다. 데스크톱 앱과 동기화할 때 사용합니다. 사용자가 '일정 동기화', '전체 일정 보여줘', '일정 새로고침' 등을 요청하면 이 도구를 사용하세요.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {
+                    "type": "integer",
+                    "description": "오늘부터 몇 일 후까지의 일정을 조회할지 (기본값: 30)"
+                },
+                "include_past": {
+                    "type": "boolean",
+                    "description": "과거 일정도 포함할지 (기본값: false)"
+                }
+            },
+            "required": []
+        }
     }
 }
 
@@ -299,6 +317,71 @@ def complete_schedule(
     }
 
 
+def get_all_schedules(
+    db: Database,
+    days_ahead: int = 30,
+    include_past: bool = False,
+) -> Dict[str, Any]:
+    """
+    모든 일정을 조회한다. (데스크톱 앱 동기화용)
+
+    Why: 데스크톱 앱이 백엔드 DB와 동기화할 때
+         전체 일정을 한 번에 가져올 수 있게 한다.
+
+    Args:
+        db: Database 인스턴스
+        days_ahead: 오늘부터 몇 일 후까지 조회 (기본 30일)
+        include_past: 과거 일정 포함 여부 (기본 False)
+
+    Returns:
+        dict: {"success": bool, "schedules": List[dict], "sync_type": "full"}
+    """
+    from datetime import timedelta
+
+    today = date.today()
+    end_date = today + timedelta(days=days_ahead)
+
+    # 과거 일정 포함 시 30일 전부터
+    if include_past:
+        start_date = today - timedelta(days=30)
+    else:
+        start_date = today
+
+    # DB 조회 - 기간 내 모든 일정
+    all_schedules = []
+    cursor = db._conn.execute("""
+        SELECT * FROM schedules
+        WHERE scheduled_date >= ? AND scheduled_date <= ?
+        ORDER BY scheduled_date ASC, start_time ASC NULLS LAST
+    """, (start_date.isoformat(), end_date.isoformat()))
+
+    for row in cursor.fetchall():
+        schedule = db._row_to_schedule(row)
+        all_schedules.append(schedule)
+
+    # 데스크톱 앱용 형식으로 변환 (snake_case → 클라이언트가 기대하는 형식)
+    schedules_for_client = []
+    for s in all_schedules:
+        schedules_for_client.append({
+            "id": s.id,
+            "title": s.title,
+            "date": s.scheduled_date.isoformat(),
+            "start_time": s.start_time.strftime("%H:%M") if s.start_time else None,
+            "end_time": s.end_time.strftime("%H:%M") if s.end_time else None,
+            "location": s.location,
+            "category": s.major_category,
+            "status": s.status,
+        })
+
+    return {
+        "success": True,
+        "sync_type": "full",
+        "schedules": schedules_for_client,
+        "count": len(schedules_for_client),
+        "sync_timestamp": datetime.now().isoformat(),
+    }
+
+
 def check_travel_time(
     db: Database,
     date: str,
@@ -421,6 +504,7 @@ def execute_tool(
         "get_schedules_for_date": get_schedules_for_date,
         "complete_schedule": complete_schedule,
         "check_travel_time": check_travel_time,
+        "get_all_schedules": get_all_schedules,
     }
 
     # Tool 존재 확인

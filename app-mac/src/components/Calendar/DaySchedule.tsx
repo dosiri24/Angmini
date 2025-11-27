@@ -19,9 +19,12 @@ const START_HOUR = 6;
 const END_HOUR = 24;
 const HOURS = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
 
-/** Date를 YYYY-MM-DD 문자열로 */
+/** Date를 YYYY-MM-DD 문자열로 (로컬 시간대 유지) */
 function formatDateString(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /** 요일 이름 */
