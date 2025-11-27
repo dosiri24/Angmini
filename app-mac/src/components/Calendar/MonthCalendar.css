@@ -1,0 +1,134 @@
+/**
+ * 월간 달력 스타일
+ */
+
+.month-calendar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  background: #1a1a1a;
+}
+
+/* 헤더 */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 4px;
+  margin-bottom: 12px;
+}
+
+.current-month {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  padding: 4px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.nav-btn:hover {
+  background: #333;
+  color: #fff;
+}
+
+/* 요일 헤더 */
+.weekday-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.weekday {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  padding: 4px 0;
+}
+
+.weekday.sunday {
+  color: #ef4444;
+}
+
+.weekday.saturday {
+  color: #3b82f6;
+}
+
+/* 달력 그리드 */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  gap: 2px;
+  flex: 1;
+}
+
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4px 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 36px;
+}
+
+.calendar-cell:not(.empty):hover {
+  background: #333;
+}
+
+.calendar-cell.empty {
+  cursor: default;
+}
+
+.calendar-cell.today {
+  background: #3b82f6;
+}
+
+.calendar-cell.today:hover {
+  background: #2563eb;
+}
+
+.calendar-cell.sunday .day-number {
+  color: #ef4444;
+}
+
+.calendar-cell.saturday .day-number {
+  color: #3b82f6;
+}
+
+.calendar-cell.today .day-number {
+  color: #fff;
+}
+
+.day-number {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+}
+
+/* 일정 표시 점 */
+.schedule-dot {
+  width: 5px;
+  height: 5px;
+  background: #22c55e;
+  border-radius: 50%;
+  margin-top: 2px;
+}
+
+.calendar-cell.today .schedule-dot {
+  background: #fff;
+}

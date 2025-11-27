@@ -1,0 +1,131 @@
+/**
+ * 일간 시간표 스타일
+ */
+
+.day-schedule {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a1a;
+}
+
+/* 헤더 */
+.schedule-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #333;
+}
+
+.back-btn {
+  background: transparent;
+  border: none;
+  color: #3b82f6;
+  font-size: 14px;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.back-btn:hover {
+  background: #333;
+}
+
+.header-date {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* 3일 뷰 */
+.three-day-view {
+  flex: 1;
+  display: flex;
+  overflow-y: auto;
+  padding: 0 8px 8px 0;
+}
+
+/* 시간 레이블 */
+.time-labels {
+  width: 42px;
+  flex-shrink: 0;
+  padding-top: 32px;
+}
+
+.time-label {
+  height: 50px;
+  font-size: 10px;
+  color: #666;
+  text-align: right;
+  padding-right: 6px;
+  box-sizing: border-box;
+}
+
+/* 날짜 칼럼들 */
+.day-columns {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+}
+
+.day-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #222;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.day-column.today {
+  background: #1e3a5f;
+}
+
+/* 날짜 헤더 */
+.day-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid #333;
+}
+
+.day-name {
+  font-size: 11px;
+  color: #888;
+}
+
+.day-date {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.day-column.today .day-date {
+  background: #3b82f6;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 시간 그리드 */
+.time-grid {
+  flex: 1;
+  position: relative;
+  min-height: calc(50px * 18); /* (24 - 6) * 50px */
+}
+
+.hour-line {
+  height: 50px;
+  border-bottom: 1px solid #333;
+}
+
+.hour-line:last-child {
+  border-bottom: none;
+}

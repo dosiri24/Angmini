@@ -1,0 +1,68 @@
+/* 메시지 입력 영역 */
+.message-input {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px;
+  background: #1e1e3a;
+  border-top: 1px solid #2a2a4a;
+}
+
+.message-input textarea {
+  flex: 1;
+  background: #2a2a4a;
+  border: 1px solid #3a3a5a;
+  border-radius: 16px;
+  padding: 10px 14px;
+  color: #e0e0e0;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  min-height: 40px;
+  max-height: 100px;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.message-input textarea:focus {
+  border-color: #6366f1;
+}
+
+.message-input textarea::placeholder {
+  color: #666;
+}
+
+.message-input textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 전송 버튼 */
+.send-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.send-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.send-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
