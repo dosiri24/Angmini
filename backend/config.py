@@ -98,7 +98,7 @@ def get_config() -> Config:
         gemini_api_key=gemini_api_key,
         discord_bot_token=os.environ.get("DISCORD_BOT_TOKEN", "").strip() or None,
         discord_channel_id=os.environ.get("DISCORD_CHANNEL_ID", "").strip() or None,
-        database_path=os.environ.get("DATABASE_PATH", "./schedules.db").strip(),
+        database_path=os.environ.get("DATABASE_PATH", "./backend/schedules.db").strip(),
         log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
     )
 

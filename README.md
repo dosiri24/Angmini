@@ -54,8 +54,8 @@ DISCORD_BOT_TOKEN=your_discord_bot_token_here
 # 봇이 응답할 채널의 ID
 DISCORD_CHANNEL_ID=your_channel_id_here
 
-# 데이터베이스 경로 (선택, 기본값: ./schedules.db)
-DATABASE_PATH=./schedules.db
+# 데이터베이스 경로 (선택, 기본값: ./backend/schedules.db)
+DATABASE_PATH=./backend/schedules.db
 
 # 로그 레벨 (선택, 기본값: INFO)
 LOG_LEVEL=INFO

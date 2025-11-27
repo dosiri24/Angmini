@@ -1,9 +1,9 @@
 #!/bin/bash
-# Angmini 통합 실행 스크립트
+# Angmini 실행 스크립트
 # 사용법: ./run-app.sh [옵션]
-#   --app-only    데스크톱 앱만 실행
+#   (옵션 없음)   데스크톱 앱만 실행 (기본)
+#   --with-bot    백엔드 봇 + 데스크톱 앱 함께 실행
 #   --bot-only    백엔드 봇만 실행
-#   (옵션 없음)   둘 다 실행
 
 set -e
 
@@ -99,15 +99,7 @@ run_app() {
 
 # 메인 로직
 case "${1:-}" in
-    --app-only)
-        run_app
-        wait $APP_PID
-        ;;
-    --bot-only)
-        run_bot
-        wait $BOT_PID
-        ;;
-    *)
+    --with-bot)
         echo -e "${GREEN}🎮 Angmini 통합 실행${NC}"
         echo -e "${YELLOW}   Ctrl+C로 모두 종료${NC}"
         echo ""
@@ -124,5 +116,14 @@ case "${1:-}" in
 
         # 둘 중 하나가 종료될 때까지 대기
         wait
+        ;;
+    --bot-only)
+        run_bot
+        wait $BOT_PID
+        ;;
+    *)
+        # 기본: 프론트엔드(데스크톱 앱)만 실행
+        run_app
+        wait $APP_PID
         ;;
 esac
