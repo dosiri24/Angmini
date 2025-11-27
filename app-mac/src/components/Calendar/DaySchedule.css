@@ -78,12 +78,12 @@
   min-width: 0;
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  /* overflow: hidden 제거 - time-grid가 잘리는 문제 해결 */
 }
 
-/* 오늘 날짜 컬럼 - 미세한 강조만 */
+/* 오늘 날짜 컬럼 - 배경은 .time-grid에서 처리 (겹침 방지) */
 .day-column.today {
-  background: rgba(49, 130, 246, 0.03);
+  background: transparent;
 }
 
 /* 날짜 헤더 */
@@ -122,9 +122,17 @@
 
 /* 시간 그리드 */
 .time-grid {
-  flex: 1;
   position: relative;
-  min-height: calc(50px * 18);
+  /* flex: 1 대신 고정 높이 사용 - 스크롤 영역 확보 */
+  height: calc(50px * 18);
+  flex-shrink: 0;
+  /* 일반 날짜 배경색 */
+  background: var(--bg-secondary);
+}
+
+/* 오늘 날짜 시간 그리드 - 연한 파랑 배경 */
+.day-column.today .time-grid {
+  background: rgba(49, 130, 246, 0.03);
 }
 
 .hour-line {
